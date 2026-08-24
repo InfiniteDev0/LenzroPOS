@@ -89,12 +89,12 @@ export function SignupForm({
                 </p>
               </div>
               <Field>
-                <FieldLabel htmlFor="full-name">Full name</FieldLabel>
+                <FieldLabel htmlFor="full-name">Restaurant name</FieldLabel>
                 <Input
                   id="full-name"
                   type="text"
                   autoComplete="name"
-                  placeholder="Ibrahim Kadri"
+                  placeholder="Enter restaurant name"
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
@@ -134,9 +134,15 @@ export function SignupForm({
                         tabIndex={-1}
                         onClick={() => setShowPassword((v) => !v)}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showPassword ? "Hide password" : "Show password"
+                        }
                       >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
                       </button>
                     </div>
                     {password.length > 0 && (
@@ -148,16 +154,24 @@ export function SignupForm({
                               className={cn(
                                 "h-1 flex-1 rounded-full transition-colors",
                                 i < strength.bars
-                                  ? PASSWORD_STRENGTH_BAR_COLORS[strength.bars - 1]
-                                  : "bg-border"
+                                  ? PASSWORD_STRENGTH_BAR_COLORS[
+                                      strength.bars - 1
+                                    ]
+                                  : "bg-border",
                               )}
                             />
                           ))}
                         </div>
-                        <p className="text-xs text-muted-foreground">{strength.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {strength.label}
+                        </p>
                       </div>
                     )}
-                    <FieldError errors={errors.password ? [{ message: errors.password }] : []} />
+                    <FieldError
+                      errors={
+                        errors.password ? [{ message: errors.password }] : []
+                      }
+                    />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="confirm-password">
@@ -173,7 +187,11 @@ export function SignupForm({
                       disabled={isLoading}
                     />
                     <FieldError
-                      errors={errors.confirmPassword ? [{ message: errors.confirmPassword }] : []}
+                      errors={
+                        errors.confirmPassword
+                          ? [{ message: errors.confirmPassword }]
+                          : []
+                      }
                     />
                   </Field>
                 </Field>
@@ -203,7 +221,8 @@ export function SignupForm({
             <img
               src="/auth.png"
               alt="Image"
-              className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale" />
+              className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
+            />
           </div>
         </CardContent>
       </Card>
