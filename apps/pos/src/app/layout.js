@@ -21,7 +21,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${albert_sans.variable} h-full antialiased`}
+      className={`${outfit.variable} ${albert_sans.variable} h-full antialiased dark`}
     >
       <body className="min-h-full flex flex-col">
         {children}

@@ -19,19 +19,17 @@ import { formatCurrency } from "@/lib/currency"
 import { notifyError } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 import { VariantPickerDialog } from "@/components/variant-picker-dialog"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-  SheetTrigger,
-} from "@/components/ui/sheet"
 
 const ITEM_SELECT =
   "*, item_variants(id, option_name, item_variant_values(id, value, price_override))"
+
+const PAYMENT_METHODS = [
+  { id: "cash", label: "Cash", icon: WalletIcon },
+  { id: "card", label: "Card", icon: CreditCardIcon },
+  { id: "mobile", label: "Mobile", icon: SmartphoneIcon },
+]
 
 function cartKey(itemId, variantValueId) {
   return `${itemId}:${variantValueId ?? "base"}`
@@ -46,7 +44,6 @@ export default function Page() {
   const [loading, setLoading] = useState(true)
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [cart, setCart] = useState([])
-  const [cartOpen, setCartOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [checkingOut, setCheckingOut] = useState(false)
   const [variantItem, setVariantItem] = useState(null)
@@ -100,14 +97,6 @@ export default function Page() {
     })
   }
 
-  function handleItemTap(item) {
-    if (item.item_variants?.length > 0) {
-      setVariantItem(item)
-      return
-    }
-    addLine(item)
-  }
-
   function setQuantity(key, quantity) {
     setCart((prev) =>
       quantity <= 0
@@ -118,6 +107,16 @@ export default function Page() {
 
   function removeLine(key) {
     setCart((prev) => prev.filter((line) => line.key !== key))
+  }
+
+  function getSimpleQuantity(itemId) {
+    return cart.find((line) => line.key === cartKey(itemId, null))?.quantity ?? 0
+  }
+
+  function decrementItem(item) {
+    const key = cartKey(item.id, null)
+    const current = getSimpleQuantity(item.id)
+    setQuantity(key, current - 1)
   }
 
   const subtotal = cart.reduce((sum, line) => sum + line.unit_price * line.quantity, 0)
@@ -161,7 +160,6 @@ export default function Page() {
 
     toast.success(`Order placed — ${formatCurrency(total)}`)
     setCart([])
-    setCartOpen(false)
   }
 
   async function handleLogout() {
@@ -175,7 +173,7 @@ export default function Page() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="flex h-svh flex-col overflow-hidden">
       <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-3">
         <div>
           <h1 className="text-lg font-semibold">Lenzro POS</h1>
@@ -186,163 +184,202 @@ export default function Page() {
         </Button>
       </header>
 
-      <main className="flex-1 space-y-4 overflow-y-auto p-4">
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setCategoryFilter("all")}
-            className={cn(
-              "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
-              categoryFilter === "all"
-                ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
-                : "border-border text-muted-foreground hover:text-foreground"
-            )}
-          >
-            All
-          </button>
-          {categories.map((cat) => (
+      <div className="flex min-h-0 flex-1">
+        <main className="min-w-0 flex-1 space-y-4 overflow-y-auto p-4">
+          <div className="flex flex-wrap gap-2">
             <button
-              key={cat.id}
               type="button"
-              onClick={() => setCategoryFilter(cat.id)}
+              onClick={() => setCategoryFilter("all")}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
-                categoryFilter === cat.id
+                "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+                categoryFilter === "all"
                   ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
                   : "border-border text-muted-foreground hover:text-foreground"
               )}
             >
-              {cat.name}
+              All
             </button>
-          ))}
-        </div>
-
-        {visibleItems.length === 0 ? (
-          <p className="py-16 text-center text-sm text-muted-foreground">
-            No items to sell yet — add some from the admin app.
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {visibleItems.map((item) => (
+            {categories.map((cat) => (
               <button
-                key={item.id}
+                key={cat.id}
                 type="button"
-                onClick={() => handleItemTap(item)}
-                className="flex flex-col items-start gap-1 rounded-xl border border-border p-3 text-left transition-colors hover:border-emerald-600 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20"
-              >
-                <span className="text-sm font-medium">{item.name}</span>
-                <span className="font-semibold">{formatCurrency(item.price)}</span>
-                {item.item_variants?.length > 0 && (
-                  <Badge variant="outline" className="rounded-full text-[10px]">
-                    Choose {item.item_variants[0].option_name}
-                  </Badge>
+                onClick={() => setCategoryFilter(cat.id)}
+                className={cn(
+                  "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+                  categoryFilter === cat.id
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
+                    : "border-border text-muted-foreground hover:text-foreground"
                 )}
+              >
+                {cat.name}
               </button>
             ))}
           </div>
-        )}
-      </main>
 
-      <div className="sticky bottom-0 border-t border-border bg-background p-4">
-        <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-          <SheetTrigger
-            render={
-              <Button className="w-full justify-between bg-emerald-600 text-white hover:bg-emerald-600/90" size="lg">
-                <span>{totalCount === 0 ? "Cart empty" : `${totalCount} item${totalCount > 1 ? "s" : ""} in cart`}</span>
-                <span>{formatCurrency(total)}</span>
-              </Button>
-            }
-          />
-          <SheetContent className="flex flex-col p-0">
-            <SheetHeader className="border-b border-border">
-              <SheetTitle>Current order</SheetTitle>
-              <SheetDescription>Review items before checkout</SheetDescription>
-            </SheetHeader>
+          {visibleItems.length === 0 ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">
+              No items to sell yet — add some from the admin app.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+              {visibleItems.map((item) => {
+                const hasVariants = item.item_variants?.length > 0
+                const quantity = hasVariants ? 0 : getSimpleQuantity(item.id)
 
-            <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
-              {cart.length === 0 && (
-                <p className="py-10 text-center text-sm text-muted-foreground">
-                  Tap a menu item to add it here.
-                </p>
-              )}
-              {cart.map((line) => (
-                <div key={line.key} className="flex items-center justify-between gap-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{line.name}</p>
-                    {line.variant_label && (
-                      <p className="truncate text-xs text-muted-foreground">{line.variant_label}</p>
+                return (
+                  <Card
+                    key={item.id}
+                    className={cn(
+                      "transition-colors",
+                      quantity > 0 && "border-emerald-600 ring-1 ring-emerald-600/30"
                     )}
-                    <p className="text-xs text-muted-foreground">{formatCurrency(line.unit_price)} each</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setQuantity(line.key, line.quantity - 1)}
-                      className="flex size-6 items-center justify-center rounded-full border border-border text-muted-foreground"
-                    >
-                      <MinusIcon className="size-3.5" />
-                    </button>
-                    <span className="w-4 text-center font-medium">{line.quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => setQuantity(line.key, line.quantity + 1)}
-                      className="flex size-6 items-center justify-center rounded-full bg-emerald-600 text-white"
-                    >
-                      <PlusIcon className="size-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeLine(line.key)}
-                      className="flex size-6 items-center justify-center rounded-full text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2Icon className="size-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  >
+                    <CardContent className="flex flex-col gap-3 p-4">
+                      <div>
+                        <p className="text-sm font-medium">{item.name}</p>
+                        <p className="text-lg font-semibold">{formatCurrency(item.price)}</p>
+                      </div>
 
-            <div className="space-y-3 border-t border-border p-4">
-              <div className="flex items-center justify-between font-semibold">
+                      {hasVariants ? (
+                        <Button
+                          variant="outline"
+                          className="h-10 w-full border-emerald-600 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                          onClick={() => setVariantItem(item)}
+                        >
+                          Choose {item.item_variants[0].option_name}
+                        </Button>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => decrementItem(item)}
+                            disabled={quantity === 0}
+                            className="flex size-10 items-center justify-center rounded-lg border border-border text-muted-foreground disabled:opacity-40"
+                          >
+                            <MinusIcon className="size-4" />
+                          </button>
+                          <span className="text-lg font-semibold tabular-nums">{quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => addLine(item)}
+                            className="flex size-10 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-600/90"
+                          >
+                            <PlusIcon className="size-4" />
+                          </button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </main>
+
+        <aside className="flex w-full max-w-sm shrink-0 flex-col border-l border-border bg-background">
+          <div className="flex items-center justify-between border-b border-border p-4">
+            <div>
+              <h2 className="font-semibold">Current Order</h2>
+              <p className="text-xs text-muted-foreground">
+                {totalCount === 0 ? "No items yet" : `${totalCount} item${totalCount > 1 ? "s" : ""}`}
+              </p>
+            </div>
+            {cart.length > 0 && (
+              <Badge variant="outline" className="rounded-full">
+                {formatCurrency(total)}
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            {cart.length === 0 && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                Tap a menu item to add it here.
+              </p>
+            )}
+            {cart.map((line) => (
+              <div key={line.key} className="flex items-center justify-between gap-2 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{line.name}</p>
+                  {line.variant_label && (
+                    <p className="truncate text-xs text-muted-foreground">{line.variant_label}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {formatCurrency(line.unit_price)} × {line.quantity} = {formatCurrency(line.unit_price * line.quantity)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(line.key, line.quantity - 1)}
+                    className="flex size-7 items-center justify-center rounded-full border border-border text-muted-foreground"
+                  >
+                    <MinusIcon className="size-3.5" />
+                  </button>
+                  <span className="w-4 text-center font-medium">{line.quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(line.key, line.quantity + 1)}
+                    className="flex size-7 items-center justify-center rounded-full bg-emerald-600 text-white"
+                  >
+                    <PlusIcon className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeLine(line.key)}
+                    className="flex size-7 items-center justify-center rounded-full text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3 border-t border-border p-4">
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Subtotal</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Tax</span>
+                <span>{formatCurrency(tax)}</span>
+              </div>
+              <div className="flex justify-between text-base font-semibold">
                 <span>Total</span>
                 <span>{formatCurrency(total)}</span>
               </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: "cash", label: "Cash", icon: WalletIcon },
-                  { id: "card", label: "Card", icon: CreditCardIcon },
-                  { id: "mobile", label: "Mobile", icon: SmartphoneIcon },
-                ].map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setPaymentMethod(id)}
-                    className={cn(
-                      "flex flex-col items-center gap-1 rounded-lg border py-2 text-xs font-medium",
-                      paymentMethod === id
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
-                        : "border-border text-muted-foreground hover:bg-muted"
-                    )}
-                  >
-                    <Icon className="size-4" />
-                    {label}
-                  </button>
-                ))}
-              </div>
             </div>
 
-            <SheetFooter className="border-t border-border">
-              <Button
-                className="bg-emerald-600 text-white hover:bg-emerald-600/90"
-                disabled={cart.length === 0 || checkingOut}
-                onClick={handleCheckout}
-              >
-                {checkingOut ? "Placing order…" : `Place order — ${formatCurrency(total)}`}
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
+            <div className="grid grid-cols-3 gap-2">
+              {PAYMENT_METHODS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setPaymentMethod(id)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded-lg border py-2 text-xs font-medium",
+                    paymentMethod === id
+                      ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  <Icon className="size-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <Button
+              className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-600/90"
+              disabled={cart.length === 0 || checkingOut}
+              onClick={handleCheckout}
+            >
+              {checkingOut ? "Placing order…" : `Place order — ${formatCurrency(total)}`}
+            </Button>
+          </div>
+        </aside>
       </div>
 
       <VariantPickerDialog

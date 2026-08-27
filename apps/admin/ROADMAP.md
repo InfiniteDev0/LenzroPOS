@@ -8,13 +8,13 @@
 - `/dashboard` — original POS terminal UI reference. **Not being reused** — POS PWA UI/logic was built fresh (Phase 3)
 - `AGENTS.md` / `CLAUDE.md` already exist at the `web/` root — keep these current as the repo splits into a monorepo, so each app has the right context for Claude Code
 - **Phase 0–2 done.** `apps/admin` and `apps/pos` run side by side on ports 3000/3001. Items, Categories (with click-through), Inventory (filtered to `track_stock = true`), and variants are real.
-- **Phase 3 done.** `apps/pos` takes real orders against real items, writes to `orders`/`order_items`, respects `available_for_sale` and variant price overrides. Tax is hardcoded to 0 until Settings' tax config is real (see Phase 9). Verified end-to-end: a real order placed through the running app confirmed correct in Supabase's Table Editor.
+- **Phase 3 done (pending your test confirmation).** `apps/pos` takes real orders against real items, writes to `orders`/`order_items`, respects `available_for_sale` and variant price overrides. Tax is hardcoded to 0 until Settings' tax config is real (see Phase 9).
 
 ## Decisions locked in
 - **Monorepo**: pnpm workspaces + Turborepo
 - **Backend**: Supabase (Postgres + auth + realtime) — no separate API server to host
 - **POS offline sync**: PowerSync, using its native Supabase integration
-- **POS desktop**: Electron wrapper around the same Next.js POS app (one codebase, PWA in browser/tablet, packaged via Electron for a dedicated terminal)
+- **POS desktop**: PWA only, no Electron — installed straight from the browser ("Add to Home Screen" / install prompt) via a web app manifest + service worker, running in a Chromium-based browser (Chrome/Edge/ChromeOS) on the terminal or PC
 - **Foundational entity**: Items & Categories — inventory, orders/receipts, and customer tickets all reference it, so it's built and made real before anything downstream
 - **Auth**: keep the existing `profiles` table as-is for now — it will double as the Employees table later (see Phase 7)
 - **Inventory model**: no composite/recipe items (e.g. a cappuccino auto-deducting sugar/milk on sale) — considered and explicitly rejected as too fragile/complex. Stock is tracked per trackable item directly, moved by two manual actions: "Add stock" (received new units) or "Adjust count" (recount / ran out)
@@ -29,8 +29,7 @@
 lenzro/
 ├── apps/
 │   ├── admin/       # current web/ app, moved here as-is
-│   ├── pos/          # order-taking app, built fresh
-│   └── electron/      # Electron shell wrapping apps/pos
+│   └── pos/          # order-taking app, installable as a PWA
 ├── packages/
 │   ├── supabase/      # shared client + generated types
 │   ├── ui/             # shared design system components
@@ -81,7 +80,7 @@ Tasks:
 
 ---
 
-## Phase 3 — POS PWA, online-only MVP ✅
+## Phase 3 — POS PWA, online-only MVP ✅ functionality / UI pass needed
 **Goal:** a working order-taking app against real data, writing real orders. No offline handling yet — that's Phase 5.
 
 Tasks:
@@ -92,11 +91,17 @@ Tasks:
 - Reuse `packages/ui` where POS and admin visuals genuinely overlap; POS-specific components (large touch targets, terminal-oriented layout) stay local to `apps/pos`
 - Reuse the shared `notifyError` friendly-error pattern from admin
 
-**Done when:** you can ring up a full order on the POS app against real menu data while online, and it lands in Supabase correctly.
+**Layout spec (redo pass — current build is functionally correct but too bare):**
+- Main area: category tabs at top, then an item grid — real cards with name, price, a quantity stepper or "Choose Size" trigger, sized for touch, not a thin single-column list
+- Right panel, persistent (not a collapsing bottom bar): current order's line items (name, qty, line total, remove), a subtotal/tax/total summary, a payment method selector (Cash/Card/Mobile), and a full-width "Place order" button
+- Pull buttons, cards, and color (emerald green) from `packages/ui` so this visually matches the admin app instead of looking like a separate, unfinished product
+- No table/dine-in workflow — this is counter-service, single running order at a time
+
+**Done when:** you can ring up a full order on the POS app against real menu data while online, it lands in Supabase correctly, and the screen looks like a finished product — not a functional placeholder.
 
 ---
 
-## Phase 4 — Wire Reports & Receipts to real orders
+## Phase 4 — Wire Reports & Receipts to real orders ✅
 **Goal:** the two pages that were reading `mock-transactions.js` now read the real thing. This can only happen after Phase 3, since real orders don't exist until the POS app is writing them.
 
 Tasks:
@@ -121,16 +126,18 @@ Tasks:
 
 ---
 
-## Phase 6 — Electron desktop + hardware
-**Goal:** POS runs as an installable app on a real terminal or PC, not just a browser tab.
+## Phase 6 — Installable PWA + hardware
+**Goal:** POS runs as an installed app on a terminal or PC — no separate desktop build — with real printer/cash-drawer support.
 
 Tasks:
-- `apps/electron` wraps `apps/pos`, packaged with electron-builder
-- Thermal printer integration (ESC/POS) for receipts
-- Cash drawer trigger via the printer
-- Barcode scanner support (usually keyboard-wedge, likely needs no special code beyond input handling)
+- Add a web app manifest (name, icons, `display: standalone`, theme color) to `apps/pos` so it's installable via the browser's "Add to Home Screen" / install prompt on Chrome/Edge/ChromeOS/Android/Windows
+- Wire up a service worker (`next-pwa`/Workbox) for app-shell caching, on top of the data sync already in place from Phase 5
+- Thermal printer, primary path: WebUSB (or Web Serial, depending on the printer's interface) to send ESC/POS commands directly from the browser — no driver install needed. Works reliably on Linux/Mac/ChromeOS
+- Thermal printer, Windows fallback: Windows' own printer driver usually claims the USB device before WebUSB can, so this isn't reliably plug-and-play there. Fallback is the plain browser print dialog to a receipt printer set as the terminal's default, with print-specific CSS sized to receipt width — run Chrome in kiosk mode with silent printing enabled so it doesn't pop a dialog per sale
+- Cash drawer: triggered via the printer's kick-drawer command, same connection as whichever printing path is in use
+- Barcode scanner: no work needed — acts as keyboard input in any browser
 
-**Done when:** a packaged build runs on a Windows/Linux terminal and prints an actual receipt.
+**Done when:** the POS app can be installed from the browser on a terminal, and a real order prints a real receipt (and kicks the drawer) from that installed app.
 
 ---
 
