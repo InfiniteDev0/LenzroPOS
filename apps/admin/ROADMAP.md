@@ -183,7 +183,7 @@ Tasks:
 Not blocking the core product — revisit once Phases 0–9 are solid:
 - Multi-store support (touches nearly every table with a `store_id`)
 - Billing & subscriptions
-- Loyalty, Taxes (rate config lands in Phase 9; loyalty program itself stays deferred)
+- Loyalty & discounts, Taxes (rate config lands in Phase 9; this stays deferred). Design sketched ahead of time so it doesn't get rebuilt wrong later: discounts apply at the order level (not per line item); the admin defines discount types up front (e.g. "Employee discount," "Promo code," a loyalty-points discount) each with an amount/percentage to subtract from the order total; a loyalty-type discount is tied to a customer record (ties into Phase 8's customer ledger) so it can factor in their points/history, while other discount types don't need a customer attached at all. `orders` will need a `discount_type_id` + `discount_amount` (or similar) once this is built — no such columns exist yet.
 - Access rights permission matrix
 - Standardizing shadcn `Table` vs. ReUI `DataGrid` across all list pages
 

@@ -5,7 +5,6 @@ import { format } from "date-fns"
 import { PrinterIcon } from "lucide-react"
 
 import { formatCurrency } from "@/lib/currency"
-import { EMPLOYEES } from "@/lib/employees"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -81,11 +80,13 @@ export function ReceiptsTable({ transactions, selectedIds, onToggleRow, onToggle
                       checked={selectedIds.has(t.id)}
                       onCheckedChange={() => onToggleRow(t.id)} />
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{t.id}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground" title={t.id}>
+                    {t.id.slice(0, 8)}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {format(t.timestamp, "d MMM, h:mm a")}
                   </TableCell>
-                  <TableCell>{EMPLOYEES.find((e) => e.id === t.employeeId)?.name ?? t.employeeId}</TableCell>
+                  <TableCell>{t.employeeName ?? t.employeeId}</TableCell>
                   <TableCell>
                     {t.itemName} <span className="text-muted-foreground">&times;{t.quantity}</span>
                   </TableCell>

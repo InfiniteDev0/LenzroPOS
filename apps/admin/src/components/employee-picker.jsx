@@ -3,7 +3,6 @@
 import { ChevronDownIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { EMPLOYEES } from "@/lib/employees"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -14,11 +13,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-export function EmployeePicker({ value: selected, onChange }) {
-  const allSelected = selected.length === EMPLOYEES.length
+const DEFAULT_COLOR = "bg-emerald-600"
+
+export function EmployeePicker({ value: selected, onChange, options }) {
+  const allSelected = options.length > 0 && selected.length === options.length
 
   function toggleAll() {
-    onChange(allSelected ? [] : EMPLOYEES.map((employee) => employee.id))
+    onChange(allSelected ? [] : options.map((employee) => employee.id))
   }
 
   function toggleEmployee(id) {
@@ -27,7 +28,7 @@ export function EmployeePicker({ value: selected, onChange }) {
     )
   }
 
-  const selectedEmployees = EMPLOYEES.filter((employee) => selected.includes(employee.id))
+  const selectedEmployees = options.filter((employee) => selected.includes(employee.id))
   const preview = selectedEmployees.slice(0, 2)
   const overflow = selectedEmployees.length - preview.length
 
@@ -36,7 +37,7 @@ export function EmployeePicker({ value: selected, onChange }) {
     : selected.length === 0
       ? "None"
       : selected.length === 1
-        ? selectedEmployees[0].name
+        ? selectedEmployees[0]?.name
         : `${selected.length} selected`
 
   return (
@@ -48,7 +49,7 @@ export function EmployeePicker({ value: selected, onChange }) {
         <div className="flex items-center -space-x-2">
           {preview.map((employee) => (
             <Avatar key={employee.id} size="sm" className="ring-2 ring-background">
-              <AvatarFallback className={cn("text-white", employee.color)}>
+              <AvatarFallback className={cn("text-white", employee.color ?? DEFAULT_COLOR)}>
                 {employee.name.charAt(0)}
               </AvatarFallback>
             </Avatar>
@@ -67,14 +68,14 @@ export function EmployeePicker({ value: selected, onChange }) {
           All employees
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
-        {EMPLOYEES.map((employee) => (
+        {options.map((employee) => (
           <DropdownMenuCheckboxItem
             key={employee.id}
             checked={selected.includes(employee.id)}
             onCheckedChange={() => toggleEmployee(employee.id)}
             className="gap-2">
             <Avatar size="sm">
-              <AvatarFallback className={cn("text-white", employee.color)}>
+              <AvatarFallback className={cn("text-white", employee.color ?? DEFAULT_COLOR)}>
                 {employee.name.charAt(0)}
               </AvatarFallback>
             </Avatar>

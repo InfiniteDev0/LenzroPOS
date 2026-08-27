@@ -1,7 +1,5 @@
 import { format } from "date-fns"
 
-import { EMPLOYEES } from "@/lib/employees"
-
 function csvCell(value) {
   return `"${String(value).replace(/"/g, '""')}"`;
 }
@@ -27,7 +25,7 @@ export function exportTransactionsCsv(transactions, filename = "receipts.csv") {
     t.id,
     format(t.timestamp, "yyyy-MM-dd"),
     format(t.timestamp, "HH:mm"),
-    EMPLOYEES.find((e) => e.id === t.employeeId)?.name ?? t.employeeId,
+    t.employeeName ?? t.employeeId,
     t.itemName,
     t.quantity,
     t.category,

@@ -1,7 +1,6 @@
 import { format } from "date-fns"
 
 import { formatCurrency } from "@/lib/currency"
-import { EMPLOYEES } from "@/lib/employees"
 import { loadReceiptSettings } from "@/lib/receipt-settings"
 
 function escapeHtml(str = "") {
@@ -23,7 +22,7 @@ function multilineHtml(text, className) {
 // gate yet (mock data has no comment/note field) — it's wired up but
 // currently a no-op until that data exists.
 function receiptHtml(t, settings) {
-  const employeeName = EMPLOYEES.find((e) => e.id === t.employeeId)?.name ?? t.employeeId;
+  const employeeName = t.employeeName ?? t.employeeId;
   const [businessName, ...addressLines] = settings.header.split("\n").filter(Boolean);
 
   return `

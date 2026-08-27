@@ -7,8 +7,6 @@ import {
   subDays,
 } from "date-fns"
 
-import { EMPLOYEES } from "@/lib/employees"
-
 export function resolveDateRange(dateFilter) {
   if (dateFilter.mode === "single") {
     const day = startOfDay(dateFilter.value)
@@ -238,6 +236,7 @@ export function aggregateByEmployee(transactions) {
     } else {
       byEmployee.set(t.employeeId, {
         employeeId: t.employeeId,
+        name: t.employeeName ?? t.employeeId,
         grossSales: t.gross,
         refunds: t.refund,
         discounts: t.discount,
@@ -249,7 +248,6 @@ export function aggregateByEmployee(transactions) {
   return Array.from(byEmployee.values())
     .map((row) => ({
       ...row,
-      name: EMPLOYEES.find((e) => e.id === row.employeeId)?.name ?? row.employeeId,
       averageSale: row.receipts ? row.netSales / row.receipts : 0,
     }))
     .sort((a, b) => b.netSales - a.netSales)

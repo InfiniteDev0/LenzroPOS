@@ -1,8 +1,11 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DownloadIcon, PrinterIcon, SearchIcon } from "lucide-react"
 
+import { createClient } from "@lenzro/supabase/client"
+import { notifyError } from "@/lib/errors"
+import { fetchRealTransactions } from "@/lib/real-sales-data"
 import { AdminPageHeader } from "@/components/admin-page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,28 +14,71 @@ import { EmployeePicker } from "@/components/employee-picker"
 import { MultiSelectFilter } from "@/components/multi-select-filter"
 import { ReceiptsTable } from "@/components/receipts-table"
 import { TimeRangePicker } from "@/components/time-range-picker"
-import { EMPLOYEES } from "@/lib/employees"
 import { exportTransactionsCsv } from "@/lib/export-csv"
-import { MENU_ITEMS, PAYMENT_METHODS, mockTransactions } from "@/lib/mock-transactions"
 import { printReceipts } from "@/lib/print-receipts"
 import { filterTransactions, resolveDateRange } from "@/lib/sales-query"
 
-const CATEGORIES = Array.from(new Set(MENU_ITEMS.map((item) => item.category)))
-const ITEM_NAMES = MENU_ITEMS.map((item) => item.name)
-
 export default function Page() {
+  const [supabase] = useState(() => createClient())
+  const [loading, setLoading] = useState(true)
+  const [allTransactions, setAllTransactions] = useState([])
+  const [employeeOptions, setEmployeeOptions] = useState([])
+  const [categoryOptions, setCategoryOptions] = useState([])
+  const [itemNameOptions, setItemNameOptions] = useState([])
+  const [paymentMethodOptions, setPaymentMethodOptions] = useState([])
+
   const [dateFilter, setDateFilter] = useState({ mode: "single", value: new Date() })
   const [timeFilter, setTimeFilter] = useState({ mode: "all-day", start: "00:00", end: "23:00" })
-  const [employeeIds, setEmployeeIds] = useState(EMPLOYEES.map((employee) => employee.id))
-  const [categories, setCategories] = useState(CATEGORIES)
-  const [itemNames, setItemNames] = useState(ITEM_NAMES)
-  const [paymentMethods, setPaymentMethods] = useState(PAYMENT_METHODS)
+  const [employeeIds, setEmployeeIds] = useState([])
+  const [categories, setCategories] = useState([])
+  const [itemNames, setItemNames] = useState([])
+  const [paymentMethods, setPaymentMethods] = useState([])
   const [search, setSearch] = useState("")
   const [selectedIds, setSelectedIds] = useState(() => new Set())
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      const { data, error } = await fetchRealTransactions(supabase)
+      if (cancelled) return
+
+      if (error) {
+        notifyError(error, "Couldn't load receipts")
+        setLoading(false)
+        return
+      }
+
+      const employees = [...new Map(data.map((t) => [t.employeeId, t.employeeName])).entries()].map(
+        ([id, name]) => ({ id, name })
+      )
+      const uniqueCategories = [...new Set(data.map((t) => t.category))]
+      const uniqueItemNames = [...new Set(data.map((t) => t.itemName))]
+      const uniquePaymentMethods = [...new Set(data.map((t) => t.paymentMethod))]
+
+      setAllTransactions(data)
+      setEmployeeOptions(employees)
+      setEmployeeIds(employees.map((e) => e.id))
+      setCategoryOptions(uniqueCategories)
+      setCategories(uniqueCategories)
+      setItemNameOptions(uniqueItemNames)
+      setItemNames(uniqueItemNames)
+      setPaymentMethodOptions(uniquePaymentMethods)
+      setPaymentMethods(uniquePaymentMethods)
+      setLoading(false)
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const filtered = useMemo(() => {
     const range = resolveDateRange(dateFilter)
-    const base = filterTransactions(mockTransactions, range, timeFilter, employeeIds)
+    const base = filterTransactions(allTransactions, range, timeFilter, employeeIds)
     const query = search.trim().toLowerCase()
 
     return base
@@ -41,13 +87,12 @@ export default function Page() {
       .filter((t) => paymentMethods.length === 0 || paymentMethods.includes(t.paymentMethod))
       .filter((t) => {
         if (!query) return true
-        const employeeName = EMPLOYEES.find((e) => e.id === t.employeeId)?.name ?? ""
-        return [t.id, t.itemName, t.category, t.paymentMethod, employeeName].some((field) =>
+        return [t.id, t.itemName, t.category, t.paymentMethod, t.employeeName ?? ""].some((field) =>
           field.toLowerCase().includes(query)
         )
       })
       .sort((a, b) => b.timestamp - a.timestamp)
-  }, [dateFilter, timeFilter, employeeIds, categories, itemNames, paymentMethods, search])
+  }, [allTransactions, dateFilter, timeFilter, employeeIds, categories, itemNames, paymentMethods, search])
 
   const selectedTransactions = useMemo(
     () => filtered.filter((t) => selectedIds.has(t.id)),
@@ -95,20 +140,20 @@ export default function Page() {
         <div className="flex flex-wrap items-center gap-2 px-4">
           <DatePicker value={dateFilter} onChange={setDateFilter} />
           <TimeRangePicker value={timeFilter} onChange={setTimeFilter} />
-          <EmployeePicker value={employeeIds} onChange={setEmployeeIds} />
+          <EmployeePicker value={employeeIds} onChange={setEmployeeIds} options={employeeOptions} />
           <MultiSelectFilter
             allLabel="All categories"
-            options={CATEGORIES}
+            options={categoryOptions}
             value={categories}
             onChange={setCategories} />
           <MultiSelectFilter
             allLabel="All items"
-            options={ITEM_NAMES}
+            options={itemNameOptions}
             value={itemNames}
             onChange={setItemNames} />
           <MultiSelectFilter
             allLabel="All payment methods"
-            options={PAYMENT_METHODS}
+            options={paymentMethodOptions}
             value={paymentMethods}
             onChange={setPaymentMethods} />
           <div className="relative ml-auto w-56">
@@ -129,12 +174,14 @@ export default function Page() {
           </Button>
         </div>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <ReceiptsTable
-            transactions={filtered}
-            selectedIds={selectedIds}
-            onToggleRow={toggleRow}
-            onToggleRows={toggleRows}
-            onPrintOne={(t) => printReceipts([t])} />
+          {!loading && (
+            <ReceiptsTable
+              transactions={filtered}
+              selectedIds={selectedIds}
+              onToggleRow={toggleRow}
+              onToggleRows={toggleRows}
+              onPrintOne={(t) => printReceipts([t])} />
+          )}
         </div>
       </div>
     </>
