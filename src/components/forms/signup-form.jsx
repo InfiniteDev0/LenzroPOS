@@ -67,7 +67,7 @@ export function SignupForm({
     }
 
     if (data.session) {
-      router.push("/dashboard")
+      router.push("/admin")
       router.refresh()
       return
     }

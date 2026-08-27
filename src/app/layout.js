@@ -1,5 +1,6 @@
 import { Outfit, Albert_Sans  } from "next/font/google";
 import { Toaster } from "sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -21,10 +22,10 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${albert_sans.variable} h-full antialiased`}
+      className={`${outfit.variable} ${albert_sans.variable} h-full antialiased dark`}
     >
       <body className="min-h-full flex flex-col">
-        {children}
+        <TooltipProvider>{children}</TooltipProvider>
         <Toaster richColors position="top-center" />
       </body>
     </html>

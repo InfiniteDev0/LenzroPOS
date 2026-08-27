@@ -1,0 +1,142 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import { DownloadIcon, PrinterIcon, SearchIcon } from "lucide-react"
+
+import { AdminPageHeader } from "@/components/admin-page-header"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/date-picker"
+import { EmployeePicker } from "@/components/employee-picker"
+import { MultiSelectFilter } from "@/components/multi-select-filter"
+import { ReceiptsTable } from "@/components/receipts-table"
+import { TimeRangePicker } from "@/components/time-range-picker"
+import { EMPLOYEES } from "@/lib/employees"
+import { exportTransactionsCsv } from "@/lib/export-csv"
+import { MENU_ITEMS, PAYMENT_METHODS, mockTransactions } from "@/lib/mock-transactions"
+import { printReceipts } from "@/lib/print-receipts"
+import { filterTransactions, resolveDateRange } from "@/lib/sales-query"
+
+const CATEGORIES = Array.from(new Set(MENU_ITEMS.map((item) => item.category)))
+const ITEM_NAMES = MENU_ITEMS.map((item) => item.name)
+
+export default function Page() {
+  const [dateFilter, setDateFilter] = useState({ mode: "single", value: new Date() })
+  const [timeFilter, setTimeFilter] = useState({ mode: "all-day", start: "00:00", end: "23:00" })
+  const [employeeIds, setEmployeeIds] = useState(EMPLOYEES.map((employee) => employee.id))
+  const [categories, setCategories] = useState(CATEGORIES)
+  const [itemNames, setItemNames] = useState(ITEM_NAMES)
+  const [paymentMethods, setPaymentMethods] = useState(PAYMENT_METHODS)
+  const [search, setSearch] = useState("")
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+
+  const filtered = useMemo(() => {
+    const range = resolveDateRange(dateFilter)
+    const base = filterTransactions(mockTransactions, range, timeFilter, employeeIds)
+    const query = search.trim().toLowerCase()
+
+    return base
+      .filter((t) => categories.length === 0 || categories.includes(t.category))
+      .filter((t) => itemNames.length === 0 || itemNames.includes(t.itemName))
+      .filter((t) => paymentMethods.length === 0 || paymentMethods.includes(t.paymentMethod))
+      .filter((t) => {
+        if (!query) return true
+        const employeeName = EMPLOYEES.find((e) => e.id === t.employeeId)?.name ?? ""
+        return [t.id, t.itemName, t.category, t.paymentMethod, employeeName].some((field) =>
+          field.toLowerCase().includes(query)
+        )
+      })
+      .sort((a, b) => b.timestamp - a.timestamp)
+  }, [dateFilter, timeFilter, employeeIds, categories, itemNames, paymentMethods, search])
+
+  const selectedTransactions = useMemo(
+    () => filtered.filter((t) => selectedIds.has(t.id)),
+    [filtered, selectedIds]
+  )
+
+  function toggleRow(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  function toggleRows(ids, shouldSelect) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (shouldSelect) {
+          next.add(id)
+        } else {
+          next.delete(id)
+        }
+      }
+      return next
+    })
+  }
+
+  function handlePrint() {
+    printReceipts(selectedTransactions.length > 0 ? selectedTransactions : filtered)
+  }
+
+  function handleExport() {
+    exportTransactionsCsv(selectedTransactions.length > 0 ? selectedTransactions : filtered)
+  }
+
+  return (
+    <>
+      <AdminPageHeader crumbs={[{ label: "Reports" }, { label: "Receipts" }]} />
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 px-4">
+          <DatePicker value={dateFilter} onChange={setDateFilter} />
+          <TimeRangePicker value={timeFilter} onChange={setTimeFilter} />
+          <EmployeePicker value={employeeIds} onChange={setEmployeeIds} />
+          <MultiSelectFilter
+            allLabel="All categories"
+            options={CATEGORIES}
+            value={categories}
+            onChange={setCategories} />
+          <MultiSelectFilter
+            allLabel="All items"
+            options={ITEM_NAMES}
+            value={itemNames}
+            onChange={setItemNames} />
+          <MultiSelectFilter
+            allLabel="All payment methods"
+            options={PAYMENT_METHODS}
+            value={paymentMethods}
+            onChange={setPaymentMethods} />
+          <div className="relative ml-auto w-56">
+            <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search receipts"
+              className="pl-8"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <Button variant="outline" className="gap-2" onClick={handlePrint} disabled={filtered.length === 0}>
+            <PrinterIcon />
+            Print{selectedTransactions.length > 0 ? ` (${selectedTransactions.length})` : ""}
+          </Button>
+          <Button className="gap-2" onClick={handleExport} disabled={filtered.length === 0}>
+            <DownloadIcon />
+            Export CSV
+          </Button>
+        </div>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+          <ReceiptsTable
+            transactions={filtered}
+            selectedIds={selectedIds}
+            onToggleRow={toggleRow}
+            onToggleRows={toggleRows}
+            onPrintOne={(t) => printReceipts([t])} />
+        </div>
+      </div>
+    </>
+  );
+}
