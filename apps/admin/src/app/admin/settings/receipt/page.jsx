@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ImageIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -15,17 +15,16 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { defaultReceiptSettings, loadReceiptSettings, saveReceiptSettings } from "@/lib/receipt-settings"
 
 const MAX_LENGTH = 500
 
-function LogoUpload({ label }) {
-  const [preview, setPreview] = useState(null)
-
+function LogoUpload({ label, value, onChange }) {
   function handleChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = () => setPreview(reader.result)
+    reader.onload = () => onChange(reader.result)
     reader.readAsDataURL(file)
   }
 
@@ -33,9 +32,9 @@ function LogoUpload({ label }) {
     <label className="flex flex-col gap-2">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="relative flex size-24 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed bg-muted/50 hover:bg-muted">
-        {preview ? (
+        {value ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt={label} className="size-full object-cover" />
+          <img src={value} alt={label} className="size-full object-cover" />
         ) : (
           <ImageIcon className="size-6 text-muted-foreground" />
         )}
@@ -46,13 +45,18 @@ function LogoUpload({ label }) {
 }
 
 export default function Page() {
-  const [header, setHeader] = useState("")
-  const [footer, setFooter] = useState("")
-  const [showCustomerInfo, setShowCustomerInfo] = useState(false)
-  const [showComments, setShowComments] = useState(false)
-  const [language, setLanguage] = useState("English")
+  const [settings, setSettings] = useState(defaultReceiptSettings)
+
+  useEffect(() => {
+    setSettings(loadReceiptSettings())
+  }, [])
+
+  function update(patch) {
+    setSettings((prev) => ({ ...prev, ...patch }))
+  }
 
   function handleSave() {
+    saveReceiptSettings(settings)
     toast.success("Receipt settings saved")
   }
 
@@ -62,21 +66,22 @@ export default function Page() {
         <h2 className="text-lg font-medium">Receipt settings</h2>
       </div>
       <CardContent className="flex flex-col gap-6 p-4">
-        <div className="flex gap-6">
-          <LogoUpload label="Emailed receipt" />
-          <LogoUpload label="Printed receipt" />
-        </div>
+        <LogoUpload
+          label="Printed receipt logo"
+          value={settings.printedLogo}
+          onChange={(printedLogo) => update({ printedLogo })}
+        />
         <div className="flex flex-col gap-1.5">
           <label htmlFor="receipt-header" className="text-sm text-muted-foreground">
             Header
           </label>
           <Textarea
             id="receipt-header"
-            value={header}
+            value={settings.header}
             maxLength={MAX_LENGTH}
-            onChange={(e) => setHeader(e.target.value)} />
+            onChange={(e) => update({ header: e.target.value })} />
           <span className="self-end text-xs text-muted-foreground">
-            {header.length} / {MAX_LENGTH}
+            {settings.header.length} / {MAX_LENGTH}
           </span>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -85,24 +90,22 @@ export default function Page() {
           </label>
           <Textarea
             id="receipt-footer"
-            value={footer}
+            value={settings.footer}
             maxLength={MAX_LENGTH}
-            onChange={(e) => setFooter(e.target.value)} />
+            onChange={(e) => update({ footer: e.target.value })} />
           <span className="self-end text-xs text-muted-foreground">
-            {footer.length} / {MAX_LENGTH}
+            {settings.footer.length} / {MAX_LENGTH}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-sm">Show customer info</span>
-          <Switch checked={showCustomerInfo} onCheckedChange={setShowCustomerInfo} />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-sm">Show comments</span>
-          <Switch checked={showComments} onCheckedChange={setShowComments} />
+          <Switch
+            checked={settings.showCustomerInfo}
+            onCheckedChange={(showCustomerInfo) => update({ showCustomerInfo })} />
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-sm text-muted-foreground">Receipt language</span>
-          <Select value={language} onValueChange={setLanguage}>
+          <Select value={settings.language} onValueChange={(language) => update({ language })}>
             <SelectTrigger className="w-48">
               <SelectValue />
             </SelectTrigger>
@@ -114,7 +117,9 @@ export default function Page() {
         </div>
       </CardContent>
       <div className="flex justify-end gap-2 border-t bg-muted/50 p-4">
-        <Button variant="outline">Cancel</Button>
+        <Button variant="outline" onClick={() => setSettings(loadReceiptSettings())}>
+          Cancel
+        </Button>
         <Button className="bg-emerald-600 hover:bg-emerald-600/90" onClick={handleSave}>
           Save
         </Button>
