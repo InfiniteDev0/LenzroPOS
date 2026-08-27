@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "admin",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -14,8 +14,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@supabase/ssr": "^0.12.5",
-    "@supabase/supabase-js": "^2.112.4",
+    "@lenzro/supabase": "workspace:*",
     "@tanstack/react-table": "^9.2.3",
     "@tanstack/react-virtual": "^3.14.10",
     "class-variance-authority": "^0.7.1",

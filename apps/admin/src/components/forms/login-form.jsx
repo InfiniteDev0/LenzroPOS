@@ -6,7 +6,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@lenzro/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {

@@ -1,4 +1,4 @@
-import { updateSession } from "@/lib/supabase/middleware";
+import { updateSession } from "@lenzro/supabase/middleware";
 
 export async function proxy(request) {
   return updateSession(request);

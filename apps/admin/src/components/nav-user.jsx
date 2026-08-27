@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 
-import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@lenzro/supabase/client"
 import {
   Avatar,
   AvatarFallback,

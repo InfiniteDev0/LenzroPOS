@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Search, Bell, User, Settings, LogOut } from "lucide-react"
 
-import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@lenzro/supabase/client"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {

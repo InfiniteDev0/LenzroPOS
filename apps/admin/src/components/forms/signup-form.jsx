@@ -6,7 +6,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@lenzro/supabase/client"
 import {
   getPasswordStrength,
   PASSWORD_STRENGTH_BAR_COLORS,

@@ -3,7 +3,7 @@ import { Wallet, ClipboardList, Table2, Timer, TrendingUp, TrendingDown, ArrowUp
 
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/currency";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@lenzro/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { SalesChart } from "@/components/dashboard/sales-chart";
 import { orderQueue } from "@/lib/mock-data";

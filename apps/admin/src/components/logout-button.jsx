@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation"
 import { LogOut } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@lenzro/supabase/client"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
