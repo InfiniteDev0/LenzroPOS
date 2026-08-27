@@ -1,78 +1,110 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { AlertTriangleIcon, RotateCwIcon, SearchIcon } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { AlertTriangleIcon, SearchIcon } from "lucide-react"
 import { toast } from "sonner"
 
+import { createClient } from "@lenzro/supabase/client"
+import { notifyError } from "@/lib/errors"
 import { AdminPageHeader } from "@/components/admin-page-header"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { InventoryTable } from "@/components/inventory-table"
+import { InventoryTable, stockStatus } from "@/components/inventory-table"
 import { MultiSelectFilter } from "@/components/multi-select-filter"
-import { MENU_ITEMS } from "@/lib/mock-transactions"
-import { initialInventory, stockStatus } from "@/lib/mock-inventory"
+import { StockAdjustmentDialog } from "@/components/stock-adjustment-dialog"
 
-const CATEGORIES = Array.from(new Set(MENU_ITEMS.map((item) => item.category)))
-const ITEM_NAMES = MENU_ITEMS.map((item) => item.name)
+function getStock(item) {
+  const raw = item.stock_levels
+  return Array.isArray(raw) ? raw[0] : raw
+}
 
 export default function Page() {
-  const [inventory, setInventory] = useState(initialInventory)
-  const [categories, setCategories] = useState(CATEGORIES)
-  const [itemNames, setItemNames] = useState(ITEM_NAMES)
+  const [supabase] = useState(() => createClient())
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
-  const [selectedNames, setSelectedNames] = useState(() => new Set())
+  const [categoryFilter, setCategoryFilter] = useState([])
+  const [dialogState, setDialogState] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function loadData() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from("items")
+      .select("*, categories(name), stock_levels(quantity, low_stock_threshold)")
+      .eq("track_stock", true)
+      .order("name")
+    if (error) {
+      notifyError(error, "Couldn't load inventory")
+    } else {
+      setItems(data)
+    }
+    setLoading(false)
+  }
+
+  const rows = useMemo(
+    () =>
+      items.map((item) => {
+        const stock = getStock(item)
+        return {
+          id: item.id,
+          name: item.name,
+          category: item.categories?.name ?? "—",
+          quantity: Number(stock?.quantity ?? 0),
+          threshold: stock?.low_stock_threshold != null ? Number(stock.low_stock_threshold) : null,
+          soldBy: item.sold_by,
+        }
+      }),
+    [items]
+  )
+
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.category))).filter((c) => c !== "—"),
+    [rows]
+  )
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return inventory
-      .filter((item) => categories.length === 0 || categories.includes(item.category))
-      .filter((item) => itemNames.length === 0 || itemNames.includes(item.name))
-      .filter((item) => !query || item.name.toLowerCase().includes(query))
-  }, [inventory, categories, itemNames, search])
+    return rows
+      .filter((row) => categoryFilter.length === 0 || categoryFilter.includes(row.category))
+      .filter((row) => !query || row.name.toLowerCase().includes(query))
+  }, [rows, categoryFilter, search])
 
-  const criticalCount = useMemo(
-    () => inventory.filter((item) => stockStatus(item) === "critical").length,
-    [inventory]
+  const needsAttentionCount = useMemo(
+    () => rows.filter((row) => stockStatus(row) !== "in").length,
+    [rows]
   )
 
-  function toggleRow(name) {
-    setSelectedNames((prev) => {
-      const next = new Set(prev)
-      if (next.has(name)) {
-        next.delete(name)
-      } else {
-        next.add(name)
-      }
-      return next
-    })
+  function openAddStock(row) {
+    setDialogState({ row, mode: "add" })
   }
 
-  function toggleRows(names, shouldSelect) {
-    setSelectedNames((prev) => {
-      const next = new Set(prev)
-      for (const name of names) {
-        if (shouldSelect) {
-          next.add(name)
-        } else {
-          next.delete(name)
-        }
-      }
-      return next
-    })
+  function openAdjustCount(row) {
+    setDialogState({ row, mode: "adjust" })
   }
 
-  function restock(names) {
-    setInventory((prev) =>
-      prev.map((item) => (names.has(item.name) ? { ...item, currentStock: item.parLevel } : item))
-    )
-    setSelectedNames((prev) => {
-      const next = new Set(prev)
-      names.forEach((name) => next.delete(name))
-      return next
+  async function handleSaveAdjustment({ quantity, note }) {
+    setSaving(true)
+    const { error } = await supabase.from("stock_adjustments").insert({
+      item_id: dialogState.row.id,
+      type: dialogState.mode,
+      quantity,
+      note,
     })
-    toast.success(
-      names.size === 1 ? `Restocked ${[...names][0]}` : `Restocked ${names.size} items`
-    )
+    setSaving(false)
+
+    if (error) {
+      notifyError(error, "Couldn't update stock")
+      return
+    }
+
+    toast.success(dialogState.mode === "add" ? "Stock added" : "Count updated")
+    setDialogState(null)
+    loadData()
   }
 
   return (
@@ -82,54 +114,43 @@ export default function Page() {
         <div className="flex flex-wrap items-center gap-2 px-4">
           <MultiSelectFilter
             allLabel="All categories"
-            options={CATEGORIES}
-            value={categories}
-            onChange={setCategories} />
-          <MultiSelectFilter
-            allLabel="All items"
-            options={ITEM_NAMES}
-            value={itemNames}
-            onChange={setItemNames} />
+            options={categoryOptions}
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+          />
           <div className="relative ml-auto w-56">
             <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search items"
               className="pl-8"
               value={search}
-              onChange={(e) => setSearch(e.target.value)} />
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <Button
-            variant="outline"
-            className="gap-2"
-            disabled={selectedNames.size === 0}
-            onClick={() => restock(selectedNames)}>
-            <RotateCwIcon />
-            Restock selected{selectedNames.size > 0 ? ` (${selectedNames.size})` : ""}
-          </Button>
-          <Button
-            className="gap-2"
-            onClick={() => restock(new Set(inventory.map((item) => item.name)))}>
-            <RotateCwIcon />
-            Restock all
-          </Button>
         </div>
 
-        {criticalCount > 0 && (
+        {!loading && needsAttentionCount > 0 && (
           <div className="mx-4 flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-400">
             <AlertTriangleIcon className="size-4 shrink-0" />
-            {criticalCount} {criticalCount === 1 ? "item is" : "items are"} critically low on stock
+            {needsAttentionCount} {needsAttentionCount === 1 ? "item needs" : "items need"} restocking
           </div>
         )}
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <InventoryTable
-            items={filtered}
-            selectedNames={selectedNames}
-            onToggleRow={toggleRow}
-            onToggleRows={toggleRows}
-            onRestockOne={(name) => restock(new Set([name]))} />
+          {!loading && (
+            <InventoryTable rows={filtered} onAddStock={openAddStock} onAdjustCount={openAdjustCount} />
+          )}
         </div>
       </div>
+
+      <StockAdjustmentDialog
+        item={dialogState?.row}
+        mode={dialogState?.mode}
+        open={!!dialogState}
+        onOpenChange={(open) => !open && setDialogState(null)}
+        onSave={handleSaveAdjustment}
+        saving={saving}
+      />
     </>
   );
 }
