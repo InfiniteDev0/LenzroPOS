@@ -1,5 +1,6 @@
 import { Outfit, Albert_Sans } from "next/font/google";
 import { Toaster } from "sonner";
+import { PowerSyncProvider } from "@/lib/powersync/PowerSyncProvider";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -24,7 +25,7 @@ export default function RootLayout({ children }) {
       className={`${outfit.variable} ${albert_sans.variable} h-full antialiased dark`}
     >
       <body className="min-h-full flex flex-col">
-        {children}
+        <PowerSyncProvider>{children}</PowerSyncProvider>
         <Toaster richColors position="top-center" />
       </body>
     </html>

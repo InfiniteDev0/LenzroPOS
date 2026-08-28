@@ -6,12 +6,15 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "powersync-web copy-assets -o public"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@lenzro/supabase": "workspace:*",
     "@lenzro/types": "workspace:*",
+    "@powersync/react": "^2.0.0",
+    "@powersync/web": "^2.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.34.0",

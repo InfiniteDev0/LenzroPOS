@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { usePowerSync, useQuery, useStatus } from "@powersync/react"
 import {
   CreditCardIcon,
   LogOutIcon,
@@ -11,6 +12,7 @@ import {
   SmartphoneIcon,
   Trash2Icon,
   WalletIcon,
+  WifiOffIcon,
 } from "lucide-react"
 
 import { createClient } from "@lenzro/supabase/client"
@@ -22,9 +24,6 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { VariantPickerDialog } from "@/components/variant-picker-dialog"
 
-const ITEM_SELECT =
-  "*, item_variants(id, option_name, item_variant_values(id, value, price_override))"
-
 const PAYMENT_METHODS = [
   { id: "cash", label: "Cash", icon: WalletIcon },
   { id: "card", label: "Card", icon: CreditCardIcon },
@@ -35,38 +34,61 @@ function cartKey(itemId, variantValueId) {
   return `${itemId}:${variantValueId ?? "base"}`
 }
 
+// Reassembles the flat local tables (categories/items/item_variants/
+// item_variant_values are separate synced SQLite tables, not a nested
+// Postgrest embed anymore) into the same item.item_variants[].
+// item_variant_values[] shape the rest of this page and
+// VariantPickerDialog already expect.
+function assembleItems(rawItems, rawVariants, rawValues) {
+  const valuesByVariant = new Map()
+  for (const v of rawValues ?? []) {
+    const list = valuesByVariant.get(v.variant_id) ?? []
+    list.push({ ...v, price_override: v.price_override != null ? Number(v.price_override) : null })
+    valuesByVariant.set(v.variant_id, list)
+  }
+
+  const variantsByItem = new Map()
+  for (const v of rawVariants ?? []) {
+    const list = variantsByItem.get(v.item_id) ?? []
+    list.push({ ...v, item_variant_values: valuesByVariant.get(v.id) ?? [] })
+    variantsByItem.set(v.item_id, list)
+  }
+
+  return (rawItems ?? []).map((item) => ({
+    ...item,
+    price: Number(item.price),
+    item_variants: variantsByItem.get(item.id) ?? [],
+  }))
+}
+
 export default function Page() {
   const router = useRouter()
+  const powersync = usePowerSync()
+  const status = useStatus()
   const [supabase] = useState(() => createClient())
   const [user, setUser] = useState(null)
-  const [categories, setCategories] = useState([])
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data?.user ?? null))
+  }, [supabase])
+
+  const { data: categories } = useQuery("SELECT * FROM categories WHERE active = 1 ORDER BY name")
+  const { data: rawItems } = useQuery(
+    "SELECT * FROM items WHERE available_for_sale = 1 ORDER BY name"
+  )
+  const { data: rawVariants } = useQuery("SELECT * FROM item_variants")
+  const { data: rawValues } = useQuery("SELECT * FROM item_variant_values")
+
+  const items = useMemo(
+    () => assembleItems(rawItems, rawVariants, rawValues),
+    [rawItems, rawVariants, rawValues]
+  )
+
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [cart, setCart] = useState([])
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [checkingOut, setCheckingOut] = useState(false)
   const [variantItem, setVariantItem] = useState(null)
-
-  async function loadData() {
-    setLoading(true)
-    const [{ data: userData }, categoriesRes, itemsRes] = await Promise.all([
-      supabase.auth.getUser(),
-      supabase.from("categories").select("*").eq("active", true).order("name"),
-      supabase.from("items").select(ITEM_SELECT).eq("available_for_sale", true).order("name"),
-    ])
-    setUser(userData?.user ?? null)
-    if (categoriesRes.error) notifyError(categoriesRes.error, "Couldn't load categories")
-    else setCategories(categoriesRes.data)
-    if (itemsRes.error) notifyError(itemsRes.error, "Couldn't load menu items")
-    else setItems(itemsRes.data)
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    loadData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const visibleItems = useMemo(
     () => (categoryFilter === "all" ? items : items.filter((i) => i.category_id === categoryFilter)),
@@ -124,42 +146,49 @@ export default function Page() {
   const total = subtotal + tax
   const totalCount = cart.reduce((sum, line) => sum + line.quantity, 0)
 
+  // Writes go to the local SQLite database first (near-instant, works
+  // offline) — PowerSyncProvider's BackendConnector uploads them to
+  // Supabase in the background whenever connectivity is available.
   async function handleCheckout() {
     setCheckingOut(true)
+    const orderId = crypto.randomUUID()
 
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .insert({ subtotal, tax, total, payment_method: paymentMethod })
-      .select()
-      .single()
+    try {
+      await powersync.execute(
+        "INSERT INTO orders (id, subtotal, tax, total, payment_method) VALUES (?, ?, ?, ?, ?)",
+        [orderId, subtotal, tax, total, paymentMethod]
+      )
 
-    if (orderError) {
-      notifyError(orderError, "Couldn't place the order")
+      for (const line of cart) {
+        await powersync.execute(
+          `INSERT INTO order_items
+             (id, order_id, item_id, variant_value_id, name, variant_label, unit_price, quantity, line_total)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            crypto.randomUUID(),
+            orderId,
+            line.item_id,
+            line.variant_value_id,
+            line.name,
+            line.variant_label,
+            line.unit_price,
+            line.quantity,
+            line.unit_price * line.quantity,
+          ]
+        )
+      }
+
+      toast.success(
+        status.connected
+          ? `Order placed — ${formatCurrency(total)}`
+          : `Order saved — will sync when back online (${formatCurrency(total)})`
+      )
+      setCart([])
+    } catch (error) {
+      notifyError(error, "Couldn't save the order")
+    } finally {
       setCheckingOut(false)
-      return
     }
-
-    const orderItemsPayload = cart.map((line) => ({
-      order_id: order.id,
-      item_id: line.item_id,
-      variant_value_id: line.variant_value_id,
-      name: line.name,
-      variant_label: line.variant_label,
-      unit_price: line.unit_price,
-      quantity: line.quantity,
-      line_total: line.unit_price * line.quantity,
-    }))
-
-    const { error: itemsError } = await supabase.from("order_items").insert(orderItemsPayload)
-    setCheckingOut(false)
-
-    if (itemsError) {
-      notifyError(itemsError, "Order saved, but the items failed to record")
-      return
-    }
-
-    toast.success(`Order placed — ${formatCurrency(total)}`)
-    setCart([])
   }
 
   async function handleLogout() {
@@ -168,15 +197,19 @@ export default function Page() {
     router.refresh()
   }
 
-  if (loading) {
-    return <div className="flex min-h-svh items-center justify-center text-muted-foreground">Loading…</div>;
-  }
-
   return (
     <div className="flex h-svh flex-col overflow-hidden">
       <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-3">
         <div>
-          <h1 className="text-lg font-semibold">Lenzro POS</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold">Lenzro POS</h1>
+            {!status.connected && (
+              <Badge variant="outline" className="gap-1 rounded-full text-amber-700 dark:text-amber-400">
+                <WifiOffIcon className="size-3" />
+                Offline
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">{user?.email}</p>
         </div>
         <Button variant="ghost" size="icon" onClick={handleLogout} title="Log out">
@@ -199,7 +232,7 @@ export default function Page() {
             >
               All
             </button>
-            {categories.map((cat) => (
+            {(categories ?? []).map((cat) => (
               <button
                 key={cat.id}
                 type="button"
@@ -216,7 +249,9 @@ export default function Page() {
             ))}
           </div>
 
-          {visibleItems.length === 0 ? (
+          {!status.hasSynced ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">Syncing menu…</p>
+          ) : visibleItems.length === 0 ? (
             <p className="py-16 text-center text-sm text-muted-foreground">
               No items to sell yet — add some from the admin app.
             </p>
