@@ -8,7 +8,9 @@
 - `/dashboard` — original POS terminal UI reference. **Not being reused** — POS PWA UI/logic was built fresh (Phase 3)
 - `AGENTS.md` / `CLAUDE.md` already exist at the `web/` root — keep these current as the repo splits into a monorepo, so each app has the right context for Claude Code
 - **Phase 0–2 done.** `apps/admin` and `apps/pos` run side by side on ports 3000/3001. Items, Categories (with click-through), Inventory (filtered to `track_stock = true`), and variants are real.
-- **Phase 3 done (pending your test confirmation).** `apps/pos` takes real orders against real items, writes to `orders`/`order_items`, respects `available_for_sale` and variant price overrides. Tax is hardcoded to 0 until Settings' tax config is real (see Phase 9).
+- **Phase 3 done.** `apps/pos` takes real orders against real items, writes to `orders`/`order_items`, respects `available_for_sale` and variant price overrides, and has had its layout redone into a persistent two-pane counter-service screen. Tax is hardcoded to 0 until Settings' tax config is real (see Phase 9).
+- **Phase 4 done.** `/admin`'s Sales Report and `/admin/receipts` read real `orders`/`order_items` instead of `mock-transactions.js`, including a real computed gross profit from `items.cost`.
+- **Phase 5 done.** `apps/pos` is offline-first via PowerSync: menu data syncs down to a local SQLite database, orders write locally first and upload in the background once connectivity returns. Verified end-to-end (placed an order fully offline, confirmed it landed in Supabase after reconnecting).
 
 ## Decisions locked in
 - **Monorepo**: pnpm workspaces + Turborepo
@@ -113,7 +115,7 @@ Tasks:
 
 ---
 
-## Phase 5 — Offline-first
+## Phase 5 — Offline-first ✅
 **Goal:** the POS app keeps working with no connection, and catches up once it's back.
 
 Tasks:
