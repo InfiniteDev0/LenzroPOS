@@ -128,18 +128,14 @@ Tasks:
 
 ---
 
-## Phase 6 — Installable PWA + hardware
-**Goal:** POS runs as an installed app on a terminal or PC — no separate desktop build — with real printer/cash-drawer support.
+## Phase 6 — Installable PWA
+**Goal:** POS runs as an installed app on a terminal or PC — no separate desktop build. No hardware integration in this phase — plain software, installable and that's it. Printer/cash-drawer/scanner work is deferred (see Phase 10) until there's an actual reason to need it.
 
 Tasks:
 - Add a web app manifest (name, icons, `display: standalone`, theme color) to `apps/pos` so it's installable via the browser's "Add to Home Screen" / install prompt on Chrome/Edge/ChromeOS/Android/Windows
 - Wire up a service worker (`next-pwa`/Workbox) for app-shell caching, on top of the data sync already in place from Phase 5
-- Thermal printer, primary path: WebUSB (or Web Serial, depending on the printer's interface) to send ESC/POS commands directly from the browser — no driver install needed. Works reliably on Linux/Mac/ChromeOS
-- Thermal printer, Windows fallback: Windows' own printer driver usually claims the USB device before WebUSB can, so this isn't reliably plug-and-play there. Fallback is the plain browser print dialog to a receipt printer set as the terminal's default, with print-specific CSS sized to receipt width — run Chrome in kiosk mode with silent printing enabled so it doesn't pop a dialog per sale
-- Cash drawer: triggered via the printer's kick-drawer command, same connection as whichever printing path is in use
-- Barcode scanner: no work needed — acts as keyboard input in any browser
 
-**Done when:** the POS app can be installed from the browser on a terminal, and a real order prints a real receipt (and kicks the drawer) from that installed app.
+**Done when:** the POS app can be installed from the browser on a terminal/PC and opens as a standalone app, no browser chrome.
 
 ---
 
@@ -195,6 +191,7 @@ Not blocking the core product — revisit once Phases 0–9 are solid:
 - Loyalty & discounts, Taxes (rate config lands in Phase 9; this stays deferred). Design sketched ahead of time so it doesn't get rebuilt wrong later: discounts apply at the order level (not per line item); the admin defines discount types up front (e.g. "Employee discount," "Promo code," a loyalty-points discount) each with an amount/percentage to subtract from the order total; a loyalty-type discount is tied to a customer record (ties into Phase 8's customer ledger) so it can factor in their points/history, while other discount types don't need a customer attached at all. `orders` will need a `discount_type_id` + `discount_amount` (or similar) once this is built — no such columns exist yet.
 - Access rights permission matrix
 - Standardizing shadcn `Table` vs. ReUI `DataGrid` across all list pages
+- Hardware integration for `apps/pos` — not needed for a plain software POS, revisit only if a real terminal setup calls for it: thermal printer via WebUSB/Web Serial (ESC/POS commands, no driver install, reliable on Linux/Mac/ChromeOS) with a Windows fallback of the plain browser print dialog + kiosk mode silent printing (Windows' own driver usually claims the USB device before WebUSB can); cash drawer triggered via the printer's kick-drawer command; barcode scanner needs no work at all since it's just keyboard input in any browser
 
 ---
 

@@ -1,3 +1,5 @@
+import { withSerwist } from "@serwist/turbopack";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@lenzro/supabase", "@lenzro/types"],
@@ -5,4 +7,4 @@ const nextConfig = {
   turbopack: {},
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);
