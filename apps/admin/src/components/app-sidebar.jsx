@@ -61,6 +61,10 @@ const data = {
           title: "Receipts",
           url: "/admin/receipts",
         },
+        {
+          title: "Expenses",
+          url: "/admin/expenses",
+        },
       ],
     },
     {
@@ -96,16 +100,11 @@ const data = {
       items: [
         {
           title: "Employee list",
-          url: "/admin/employees",
-        },
-        {
-          title: "Access rights",
-          url: "/admin/employees/access-rights",
-        },
+          url: "/admin/employees",}
       ],
     },
     {
-      title: "Customers",
+      title: "Open Tabs",
       url: "/admin/customers",
       icon: (
         <ContactIcon />

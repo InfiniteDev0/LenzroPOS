@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input"
 
 const EMPTY_FORM = { name: "", email: "", phone: "", address: "", city: "", country: "Kenya", idNumber: "" }
 
+// Contact info only — tab/orders/payments live on the dedicated
+// /admin/customers/[id] page, not crammed into this dialog.
 export function CustomerDialog({ customer, open, onOpenChange, onSave }) {
   const [form, setForm] = useState(EMPTY_FORM)
 
@@ -28,7 +30,6 @@ export function CustomerDialog({ customer, open, onOpenChange, onSave }) {
   function handleSubmit(e) {
     e.preventDefault()
     onSave({ ...customer, ...form })
-    onOpenChange(false)
   }
 
   return (

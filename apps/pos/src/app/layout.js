@@ -28,7 +28,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${albert_sans.variable} h-full antialiased dark`}
+      className={`${outfit.variable} ${albert_sans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <SerwistProvider swUrl="/serwist/sw.js">

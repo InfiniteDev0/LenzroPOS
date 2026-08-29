@@ -49,7 +49,10 @@ export function PosDeviceDialog({ device, open, onOpenChange, onSave, onDelete }
             {device && (
               <div className="flex flex-col gap-1 border-t pt-4">
                 <span className="text-sm text-muted-foreground">Status</span>
-                <span className="font-medium text-amber-600">{device.status}</span>
+                <span
+                  className={`font-medium ${device.status === "Activated" ? "text-emerald-600" : "text-amber-600"}`}>
+                  {device.status}
+                </span>
                 <span className="text-sm text-muted-foreground">
                   Sign in to the Lenzro POS app to activate this device.
                 </span>

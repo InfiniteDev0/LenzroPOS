@@ -1,9 +1,24 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { LayoutGridIcon, PlusIcon, SearchIcon, TableIcon } from "lucide-react"
+import { toast } from "sonner"
 
+import { createClient } from "@lenzro/supabase/client"
+import { notifyError } from "@/lib/errors"
+import { fetchCustomersWithBalances } from "@/lib/real-customers-data"
 import { AdminPageHeader } from "@/components/admin-page-header"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CustomerCards, CustomerTable } from "@/components/customer-list"
@@ -12,11 +27,31 @@ import { EmptyState } from "@/components/empty-state"
 import { cn } from "@/lib/utils"
 
 export default function Page() {
+  const router = useRouter()
+  const [supabase] = useState(() => createClient())
   const [customers, setCustomers] = useState([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
-  const [view, setView] = useState("table")
+  const [view, setView] = useState("card")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+
+  useEffect(() => {
+    loadCustomers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function loadCustomers() {
+    setLoading(true)
+    const { data, error } = await fetchCustomersWithBalances(supabase)
+    if (error) {
+      notifyError(error, "Couldn't load customers")
+    } else {
+      setCustomers(data)
+    }
+    setLoading(false)
+  }
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -33,31 +68,63 @@ export default function Page() {
     setDialogOpen(true)
   }
 
-  function openEdit(customer) {
-    setEditingCustomer(customer)
-    setDialogOpen(true)
+  function openDetail(customer) {
+    router.push(`/admin/customers/${customer.id}`)
   }
 
-  function handleSave(form) {
-    if (editingCustomer) {
-      setCustomers((prev) =>
-        prev.map((c) => (c.id === editingCustomer.id ? { ...c, ...form } : c))
-      )
-    } else {
-      setCustomers((prev) => [...prev, { ...form, id: crypto.randomUUID(), taken: 0, paid: 0 }])
+  async function handleSave(form) {
+    const payload = {
+      name: form.name,
+      email: form.email || null,
+      phone: form.phone || null,
+      address: form.address || null,
+      city: form.city || null,
+      country: form.country || null,
+      id_number: form.idNumber || null,
     }
+
+    const { error } = editingCustomer
+      ? await supabase.from("customers").update(payload).eq("id", editingCustomer.id)
+      : await supabase.from("customers").insert(payload)
+
+    if (error) {
+      notifyError(error, "Couldn't save the customer")
+      return
+    }
+
+    toast.success(editingCustomer ? "Customer updated" : "Customer added")
+    setDialogOpen(false)
+    loadCustomers()
+  }
+
+  async function handleDelete() {
+    const { error } = await supabase.from("customers").delete().eq("id", deleteTarget.id)
+    if (error) {
+      notifyError(
+        error,
+        "Couldn't delete this customer",
+        error.code === "23503"
+          ? "They still have orders or payments on record — those have to stay for the books."
+          : null
+      )
+      setDeleteTarget(null)
+      return
+    }
+    toast.success(`${deleteTarget.name} removed`)
+    setDeleteTarget(null)
+    loadCustomers()
   }
 
   return (
     <>
-      <AdminPageHeader crumbs={[{ label: "Customers" }]} />
+      <AdminPageHeader crumbs={[{ label: "Open Tabs" }]} />
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        {customers.length === 0 ? (
+        {!loading && customers.length === 0 ? (
           <EmptyState
             image="/customer.png"
             imageAlt="Customer"
-            title="No customers yet"
-            description="Add customers to keep track of what they take on credit, what they've paid, and what they still owe."
+            title="No open tabs yet"
+            description="Add people you trust to order now and pay later — friends, regulars, anyone you're comfortable extending a tab to."
             actionLabel="Add customer"
             onAction={openAdd} />
         ) : (
@@ -95,9 +162,9 @@ export default function Page() {
               </div>
             </div>
             {view === "table" ? (
-              <CustomerTable customers={filtered} onSelect={openEdit} />
+              <CustomerTable customers={filtered} onSelect={openDetail} />
             ) : (
-              <CustomerCards customers={filtered} onSelect={openEdit} />
+              <CustomerCards customers={filtered} onSelect={openDetail} onDelete={setDeleteTarget} />
             )}
           </>
         )}
@@ -107,6 +174,23 @@ export default function Page() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSave={handleSave} />
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {deleteTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>This can&apos;t be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={handleDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

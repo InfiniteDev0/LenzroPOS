@@ -9,6 +9,7 @@ import { createClient } from "@lenzro/supabase/client"
 import { formatCurrency } from "@/lib/currency"
 import { saveItemWithVariants } from "@/lib/items-api"
 import { notifyError } from "@/lib/errors"
+import { uploadItemImage } from "@/lib/upload-item-image"
 import { AdminPageHeader } from "@/components/admin-page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -109,6 +110,7 @@ function ItemsPageContent() {
       barcode: rest.barcode || null,
       available_for_sale: rest.available_for_sale,
       track_stock: rest.track_stock,
+      image_url: rest.image_url || null,
     }
     const { error } = await saveItemWithVariants(supabase, {
       itemId: editingItem?.id ?? null,
@@ -125,6 +127,15 @@ function ItemsPageContent() {
     toast.success(editingItem ? "Item updated" : "Item added")
     setDialogOpen(false)
     loadData()
+  }
+
+  async function handleUploadImage(file) {
+    const { url, error } = await uploadItemImage(supabase, file)
+    if (error) {
+      notifyError(error, "Couldn't upload the photo")
+      return null
+    }
+    return url
   }
 
   async function handleDelete() {
@@ -284,6 +295,7 @@ function ItemsPageContent() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSave={handleSave}
+        onUploadImage={handleUploadImage}
         saving={saving}
       />
 

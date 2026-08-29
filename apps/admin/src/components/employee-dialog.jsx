@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 
-import { EMPLOYEE_ROLES } from "@/lib/employees"
+import { ASSIGNABLE_EMPLOYEE_ROLES } from "@/lib/employees"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { PinInput } from "@/components/pin-input"
 import {
   Select,
   SelectContent,
@@ -22,18 +23,29 @@ import {
 } from "@/components/ui/select"
 
 export function EmployeeDialog({ employee, open, onOpenChange, onSave }) {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "Cashier" })
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    role: "Cashier",
+    pin: "",
+    pinEnabled: true,
+  })
 
   useEffect(() => {
-    if (employee) {
+    if (employee && open) {
       setForm({
         name: employee.name,
-        email: employee.email,
-        phone: employee.phone,
+        email: employee.email ?? "",
+        phone: employee.phone ?? "",
         role: employee.role,
+        pin: employee.pin ?? "",
+        pinEnabled: employee.pinEnabled ?? true,
       })
+    } else if (!employee && open) {
+      setForm({ name: "", email: "", phone: "", role: "Cashier", pin: "", pinEnabled: true })
     }
-  }, [employee])
+  }, [employee, open])
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -82,7 +94,7 @@ export function EmployeeDialog({ employee, open, onOpenChange, onSave }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {EMPLOYEE_ROLES.map((role) => (
+                  {ASSIGNABLE_EMPLOYEE_ROLES.map((role) => (
                     <SelectItem key={role} value={role}>
                       {role}
                     </SelectItem>
@@ -90,6 +102,22 @@ export function EmployeeDialog({ employee, open, onOpenChange, onSave }) {
                 </SelectContent>
               </Select>
             </Field>
+            <div className="flex items-end justify-between gap-4 border-t pt-4">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm text-muted-foreground">POS PIN</span>
+                {form.pinEnabled ? (
+                  <PinInput pin={form.pin} onChange={(pin) => setForm((f) => ({ ...f, pin }))} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">PIN disabled</p>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setForm((f) => ({ ...f, pinEnabled: !f.pinEnabled }))}>
+                {form.pinEnabled ? "Disable PIN code" : "Enable PIN code"}
+              </Button>
+            </div>
           </FieldGroup>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

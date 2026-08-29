@@ -22,6 +22,7 @@ const items = new Table(
     track_stock: column.integer,
     sku: column.text,
     barcode: column.text,
+    image_url: column.text,
   },
   { indexes: { by_category: ["category_id"] } }
 );
@@ -43,6 +44,23 @@ const item_variant_values = new Table(
   { indexes: { by_variant: ["variant_id"] } }
 );
 
+// Read-only here too — lets the sales screen flag "running low"/"out of
+// stock" so a cashier knows to tell the owner, using the same numbers
+// Inventory (in the admin app) is already tracking. Nothing in this app
+// ever adjusts stock; that stays an admin-only action.
+//
+// stock_levels' Postgres primary key is item_id, not id — PowerSync
+// requires a synced `id` column, so the stream selects `item_id as id`
+// (see the stock_levels stream in the Sync Streams config).
+const stock_levels = new Table(
+  {
+    item_id: column.text,
+    quantity: column.real,
+    low_stock_threshold: column.real,
+  },
+  { indexes: { by_item: ["item_id"] } }
+);
+
 // Orders — written locally first (offline-capable), then uploaded via
 // BackendConnector.uploadData(). account_id/created_by/status are left
 // out here deliberately: Postgres fills them in via column defaults
@@ -54,7 +72,106 @@ const orders = new Table({
   tax: column.real,
   total: column.real,
   payment_method: column.text,
+  shift_id: column.text,
+  // Set client-side at insert time (like `id`) rather than left for
+  // Postgres's `default now()` — the Tickets view needs to sort/show a
+  // real timestamp immediately after checkout, before this row has ever
+  // round-tripped through Postgres and synced back down.
+  created_at: column.text,
+  discount_type_id: column.text,
+  discount_amount: column.real,
+  customer_id: column.text,
+  customer_name: column.text,
+  order_type: column.text,
 });
+
+// Admin-defined, cashier-applied at checkout — read-only here.
+const discount_types = new Table({
+  name: column.text,
+  kind: column.text,
+  value: column.real,
+  apply_to: column.text,
+  active: column.integer,
+});
+
+// A real customer (has an account, can carry a tab) vs. a free-text walk-in
+// name typed straight onto the order (orders.customer_name) — only a real
+// customer_id unlocks the "Add to tab" payment option.
+const customers = new Table({
+  name: column.text,
+  phone: column.text,
+});
+
+// Written from here too — a cashier can log a payment against a
+// customer's running tab balance without that requiring a new order.
+const customer_payments = new Table({
+  customer_id: column.text,
+  amount: column.real,
+  created_at: column.text,
+  // Null when logged from the admin app (the owner is the one recording
+  // it there) — set to the current shift's employee when logged here.
+  recorded_by_employee_id: column.text,
+});
+
+// Tracks how each payment was split across specific tab orders — see
+// apps/admin's copy of this table/migration for the full reasoning
+// (revenue recognition: a tab order only counts as a sale once fully
+// allocated, dated when that happened, not when it was placed).
+const customer_payment_allocations = new Table({
+  payment_id: column.text,
+  order_id: column.text,
+  amount: column.real,
+  created_at: column.text,
+});
+
+// Staff + shift data (Phase 7). employees/pos_devices are read-mostly from
+// this app (PIN checks, device lookup) — the owner manages both for real
+// from the admin app. shifts/shift_items are written from here: opening a
+// shift is a local insert, closing one is a local update, same
+// write-local-then-upload pattern as orders. account_id is left out of
+// all four for the same reason as orders — Postgres fills it in via
+// `default auth.uid()` on upload.
+const employees = new Table({
+  full_name: column.text,
+  email: column.text,
+  phone: column.text,
+  role: column.text,
+  pos_pin: column.text,
+  pos_pin_enabled: column.integer,
+  status: column.text,
+});
+
+const pos_devices = new Table({
+  name: column.text,
+  status: column.text,
+  activated_at: column.text,
+});
+
+const shifts = new Table(
+  {
+    employee_id: column.text,
+    pos_device_id: column.text,
+    opened_at: column.text,
+    closed_at: column.text,
+    opening_float: column.real,
+    closing_cash_counted: column.real,
+    expenses_total: column.real,
+    expected_cash: column.real,
+    discrepancy: column.real,
+    status: column.text,
+  },
+  { indexes: { by_device: ["pos_device_id"] } }
+);
+
+const shift_expenses = new Table(
+  {
+    shift_id: column.text,
+    amount: column.real,
+    note: column.text,
+    created_at: column.text,
+  },
+  { indexes: { by_shift: ["shift_id"] } }
+);
 
 const order_items = new Table(
   {
@@ -75,6 +192,15 @@ export const AppSchema = new Schema({
   items,
   item_variants,
   item_variant_values,
+  stock_levels,
   orders,
   order_items,
+  employees,
+  pos_devices,
+  shifts,
+  shift_expenses,
+  discount_types,
+  customers,
+  customer_payments,
+  customer_payment_allocations,
 });

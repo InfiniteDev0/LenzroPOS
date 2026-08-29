@@ -38,24 +38,6 @@ const FEATURES = [
     description: "Allow to save and edit orders before completing a payment.",
   },
   {
-    key: "kitchenPrinters",
-    icon: PrinterIcon,
-    title: "Kitchen printers",
-    description: "Send orders to kitchen printer or display.",
-  },
-  {
-    key: "customerDisplays",
-    icon: MonitorIcon,
-    title: "Customer displays",
-    description: "Display order information to customers at the time of purchase.",
-  },
-  {
-    key: "diningOptions",
-    icon: UtensilsCrossedIcon,
-    title: "Dining options",
-    description: "Mark orders as dine in, takeout or for delivery.",
-  },
-  {
     key: "lowStockNotifications",
     icon: MailIcon,
     title: "Low stock notifications",
@@ -66,12 +48,6 @@ const FEATURES = [
     icon: ShoppingBagIcon,
     title: "Negative stock alerts",
     description: "Warn cashiers attempting to sell more inventory than available in stock.",
-  },
-  {
-    key: "weightEmbeddedBarcodes",
-    icon: BarcodeIcon,
-    title: "Weight embedded barcodes",
-    description: "Allow to scan barcodes with embedded weight.",
   },
 ]
 

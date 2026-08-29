@@ -11,6 +11,7 @@ const SETTINGS_LINKS = [
   { href: "/admin/settings", label: "Features" },
   { href: "/admin/settings/billing", label: "Billing & subscriptions" },
   { href: "/admin/settings/payment-types", label: "Payment types" },
+  { href: "/admin/settings/discounts", label: "Discounts" },
   { href: "/admin/settings/receipt", label: "Receipt" },
 ]
 
@@ -54,7 +55,7 @@ export function SettingsNav() {
   const pathname = usePathname()
 
   return (
-    <Card className="hidden w-64 shrink-0 gap-6 py-4 sm:flex">
+    <Card className="hidden w-64 shrink-0 gap-6  p-4 sm:flex">
       <NavGroup
         icon={<SettingsIcon className="size-4" />}
         iconBg="bg-muted-foreground"

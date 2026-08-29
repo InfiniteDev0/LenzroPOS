@@ -18,7 +18,7 @@
 - **POS offline sync**: PowerSync, using its native Supabase integration
 - **POS desktop**: PWA only, no Electron — installed straight from the browser ("Add to Home Screen" / install prompt) via a web app manifest + service worker, running in a Chromium-based browser (Chrome/Edge/ChromeOS) on the terminal or PC
 - **Foundational entity**: Items & Categories — inventory, orders/receipts, and customer tickets all reference it, so it's built and made real before anything downstream
-- **Auth**: keep the existing `profiles` table as-is for now — it will double as the Employees table later (see Phase 7)
+- **Auth**: keep the existing `profiles` table as-is for the owner's own Supabase Auth identity. Employees/staff are a separate `employees` table, not more `profiles` rows — see Phase 7 for why
 - **Inventory model**: no composite/recipe items (e.g. a cappuccino auto-deducting sugar/milk on sale) — considered and explicitly rejected as too fragile/complex. Stock is tracked per trackable item directly, moved by two manual actions: "Add stock" (received new units) or "Adjust count" (recount / ran out)
 - **Variants**: items can have variant options (e.g. Size: Small/Medium/Large) with an optional per-variant price — a separate concern from inventory, does not drive stock deduction
 - **Item flags are independent**: `available_for_sale` (shows as a button on the POS sales screen) and `track_stock` (shows as a row in Inventory) are two separate booleans, not one. Cappuccino → sale: yes, track stock: no (made-to-order, nothing to count). Soda → sale: yes, track stock: yes (sold as-is, bottles counted). Cups/sugar/milk → sale: no, track stock: yes (never on the POS screen, still counted). Inventory only ever lists items where `track_stock` is true — a made-to-order drink should never appear there
@@ -143,8 +143,8 @@ Tasks:
 **Goal:** a device is activated once with a real login; after that, staff open and close shifts with just a PIN, and every sale is attributed to whoever's shift it happened under.
 
 Tasks:
-- `pos_devices` table (account_id, name, status: not_activated/activated, activated_at) — backs the existing Settings > POS devices screen. "Activate" happens by signing into `apps/pos` once with a real Supabase login on that device; the device then stays activated (persisted session/token) and never needs full login again
-- Extend `profiles` with `pos_pin` (4-digit, unique per account) and a fixed set of `role` values (Owner/Administrator/Manager/Cashier) — Owner assigns each employee's PIN via the existing employee edit dialog
+- `pos_devices` table (account_id, name, status: not_activated/activated, activated_at) — backs the existing Settings > POS devices screen. "Activate" happens by signing into `apps/pos` once with a real Supabase login on that device; the device then stays activated (persisted locally) and never needs full login again
+- `employees` table (account_id, full_name, email, phone, role: Owner/Administrator/Manager/Cashier, pos_pin, pos_pin_enabled, status) — **not** more `profiles` rows: `profiles.id` is a hard FK to `auth.users.id`, and staff never get a real Supabase Auth login at all, only a PIN checked locally against this table. The owner gets a row here too (role Owner, auto-created alongside their profile on signup) so their own sales attribute the same way. Backs the existing Employees list + Owner/Employee edit dialogs
 - `shifts` table: employee_id, pos_device_id, opened_at, closed_at, opening_float, closing_cash_counted, expenses_total, expected_cash, discrepancy, status (open/closed)
 - `shift_expenses` table: shift_id, amount, note, created_at — logged any time during the shift, not just at close
 - Add `shift_id` to `orders` — every sale is attributed to the shift (and through it, the employee) that rang it up
@@ -153,6 +153,8 @@ Tasks:
 - Reports/receipts should be filterable by shift, so a worker (or the owner) can see exactly what was sold in a given shift window, regardless of how many people worked that day
 
 **Done when:** a device can be activated once; day-to-day, a worker opens a shift with their PIN, sells under that shift, closes it with a real cash reconciliation, and the next shift correctly inherits the float that was left behind.
+
+**Status: core flow built, not yet migrated/synced.** Schema (`0006_devices_pins_shifts.sql`), real Employees + POS devices admin CRUD, and the full `apps/pos` flow (device activation, employee/PIN picker, opening float, mid-shift expense logging, close-with-discrepancy) are written. Still needed before this is usable: run the migration, add the 4 new tables to the PowerSync Sync Streams config, and — optional, not required by the "Done when" line above — make Sales report/Receipts filterable by shift.
 
 ---
 
@@ -175,10 +177,10 @@ Tasks:
 **Goal:** Settings stops resetting on refresh.
 
 Tasks:
-- **Features**: persist the 9 toggles (Shifts, Time clock, Open tickets, Kitchen printers, Customer displays, Dining options, Low stock notifications, Negative stock alerts, Weight-embedded barcodes) to Supabase
+- **Features**: persist the 9 toggles (Shifts, Time clock,, Low stock notifications, Negative stock alerts, Weight-embedded barcodes) to Supabase
 - **Payment types**: persist the list; wire up the drag-to-reorder that's currently visual-only
 - **Receipt**: persist logo, header/footer text, toggles, and language; actually connect the uploaded logo to the print flow (currently disconnected)
-- **Tax**: add a real tax-rate field here, then go back and remove the hardcoded 0 from Phase 3's order creation
+
 
 **Done when:** every Settings sub-page keeps its values after a refresh, and a printed receipt actually uses the uploaded logo.
 

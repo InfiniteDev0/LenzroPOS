@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { PlusIcon, Trash2Icon, UtensilsIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { ImageDropzone } from "@/components/image-dropzone"
 import {
   Dialog,
   DialogContent,
@@ -32,9 +33,10 @@ function newVariantValue() {
   return { id: crypto.randomUUID(), value: "", price_override: "" }
 }
 
-export function ItemDialog({ item, categories, open, onOpenChange, onSave, saving }) {
+export function ItemDialog({ item, categories, open, onOpenChange, onSave, onUploadImage, saving }) {
   const [form, setForm] = useState(emptyItem)
   const [variants, setVariants] = useState([])
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -51,8 +53,9 @@ export function ItemDialog({ item, categories, open, onOpenChange, onSave, savin
             barcode: item.barcode || "",
             available_for_sale: item.available_for_sale,
             track_stock: item.track_stock,
+            image_url: item.image_url || "",
           }
-        : { ...emptyItem, category_id: categories[0]?.id ?? "" }
+        : { ...emptyItem, category_id: categories[0]?.id ?? "", image_url: "" }
     )
 
     setVariants(
@@ -108,6 +111,13 @@ export function ItemDialog({ item, categories, open, onOpenChange, onSave, savin
     )
   }
 
+  async function handleImageUpload(file) {
+    setUploadingImage(true)
+    const url = await onUploadImage(file)
+    if (url) setForm((f) => ({ ...f, image_url: url }))
+    setUploadingImage(false)
+  }
+
   function handleSubmit(e) {
     e.preventDefault()
 
@@ -155,13 +165,26 @@ export function ItemDialog({ item, categories, open, onOpenChange, onSave, savin
             </Field>
 
             <Field>
+              <FieldLabel>Photo</FieldLabel>
+              <ImageDropzone
+                value={form.image_url}
+                uploading={uploadingImage}
+                onUpload={handleImageUpload}
+                onRemove={() => setForm((f) => ({ ...f, image_url: "" }))}
+              />
+              <p className="text-xs text-muted-foreground">Optional — shown on the POS order screen</p>
+            </Field>
+
+            <Field>
               <FieldLabel htmlFor="item-category">Category</FieldLabel>
               <Select
                 value={form.category_id}
                 onValueChange={(value) => setForm((f) => ({ ...f, category_id: value }))}
               >
                 <SelectTrigger id="item-category" className="w-full">
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Select category">
+                    {(value) => categories.find((c) => c.id === value)?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((cat) => (

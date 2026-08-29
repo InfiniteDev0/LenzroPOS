@@ -1,10 +1,20 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTable } from "@tanstack/react-table"
-import { KeyRoundIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, SearchIcon, UserXIcon } from "lucide-react"
+import {
+  KeyRoundIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  UserCheckIcon,
+  UserXIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
+import { createClient } from "@lenzro/supabase/client"
+import { notifyError } from "@/lib/errors"
 import { AdminPageHeader } from "@/components/admin-page-header"
 import {
   AlertDialog,
@@ -42,16 +52,38 @@ import {
   DataGridTableRowSelect,
   DataGridTableRowSelectAll,
 } from "@/components/reui/data-grid/data-grid-table"
-import { EMPLOYEES } from "@/lib/employees"
+import { toEmployeeViewModel } from "@/lib/employees"
 
 export default function Page() {
-  const [employees, setEmployees] = useState(EMPLOYEES)
+  const [supabase] = useState(() => createClient())
+  const [employees, setEmployees] = useState([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
   const [sorting, setSorting] = useState([{ id: "name", desc: false }])
   const [rowSelection, setRowSelection] = useState({})
   const [editingEmployee, setEditingEmployee] = useState(null)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
+
+  useEffect(() => {
+    loadEmployees()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function loadEmployees() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from("employees")
+      .select("*")
+      .order("created_at", { ascending: true })
+    if (error) {
+      notifyError(error, "Couldn't load employees")
+    } else {
+      setEmployees(data.map(toEmployeeViewModel))
+    }
+    setLoading(false)
+  }
 
   const data = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -60,26 +92,81 @@ export default function Page() {
       (employee) =>
         employee.name.toLowerCase().includes(query) ||
         employee.role.toLowerCase().includes(query) ||
-        employee.email.toLowerCase().includes(query)
+        (employee.email ?? "").toLowerCase().includes(query)
     )
   }, [employees, search])
 
-  function handleSave(updated) {
-    setEmployees((prev) => prev.map((e) => (e.id === updated.id ? { ...e, ...updated } : e)))
+  function openAdd() {
+    setEditingEmployee(null)
+    setAddDialogOpen(true)
   }
 
-  function handleResetPin(employee) {
-    toast.success(`PIN reset for ${employee.name}`)
+  async function handleSave(form) {
+    const payload = {
+      full_name: form.name,
+      email: form.email || null,
+      phone: form.phone || null,
+      role: form.role,
+      pos_pin_enabled: form.pinEnabled,
+      pos_pin: form.pinEnabled ? form.pin || null : null,
+    }
+
+    const { error } = editingEmployee
+      ? await supabase.from("employees").update(payload).eq("id", editingEmployee.id)
+      : await supabase.from("employees").insert(payload)
+
+    if (error) {
+      notifyError(
+        error,
+        "Couldn't save employee",
+        error.code === "23505" ? "That PIN is already used by another employee." : null
+      )
+      return
+    }
+
+    toast.success(editingEmployee ? "Employee updated" : "Employee added")
+    setEditingEmployee(null)
+    setAddDialogOpen(false)
+    loadEmployees()
   }
 
-  function handleDeactivate(employee) {
-    toast.success(`${employee.name} deactivated`)
+  async function handleResetPin(employee) {
+    const { error } = await supabase
+      .from("employees")
+      .update({ pos_pin: null })
+      .eq("id", employee.id)
+    if (error) {
+      notifyError(error, "Couldn't reset PIN")
+      return
+    }
+    toast.success(`PIN reset for ${employee.name} — assign a new one from Edit`)
+    loadEmployees()
   }
 
-  function handleDelete() {
-    setEmployees((prev) => prev.filter((e) => e.id !== deleteTarget.id))
+  async function handleToggleStatus(employee) {
+    const nextStatus = employee.status === "active" ? "deactivated" : "active"
+    const { error } = await supabase
+      .from("employees")
+      .update({ status: nextStatus })
+      .eq("id", employee.id)
+    if (error) {
+      notifyError(error, "Couldn't update employee")
+      return
+    }
+    toast.success(nextStatus === "active" ? `${employee.name} reactivated` : `${employee.name} deactivated`)
+    loadEmployees()
+  }
+
+  async function handleDelete() {
+    const { error } = await supabase.from("employees").delete().eq("id", deleteTarget.id)
+    if (error) {
+      notifyError(error, "Couldn't delete employee")
+      setDeleteTarget(null)
+      return
+    }
     toast.success(`${deleteTarget.name} removed`)
     setDeleteTarget(null)
+    loadEmployees()
   }
 
   const columns = useMemo(
@@ -104,6 +191,11 @@ export default function Page() {
               </AvatarFallback>
             </Avatar>
             <span className="font-medium text-foreground">{row.original.name}</span>
+            {row.original.status !== "active" && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                Deactivated
+              </span>
+            )}
           </div>
         ),
         minSize: 220,
@@ -169,9 +261,18 @@ export default function Page() {
                   <KeyRoundIcon />
                   Reset PIN
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDeactivate(row.original)}>
-                  <UserXIcon />
-                  Deactivate
+                <DropdownMenuItem onClick={() => handleToggleStatus(row.original)}>
+                  {row.original.status === "active" ? (
+                    <>
+                      <UserXIcon />
+                      Deactivate
+                    </>
+                  ) : (
+                    <>
+                      <UserCheckIcon />
+                      Reactivate
+                    </>
+                  )}
                 </DropdownMenuItem>
                 {row.original.role !== "Owner" && (
                   <>
@@ -226,7 +327,7 @@ export default function Page() {
       <AdminPageHeader crumbs={[{ label: "Employees" }, { label: "Employee list" }]} />
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
         <div className="flex items-center gap-2">
-          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-600/90">
+          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-600/90" onClick={openAdd}>
             <PlusIcon />
             Add employee
           </Button>
@@ -265,8 +366,13 @@ export default function Page() {
       ) : (
         <EmployeeDialog
           employee={editingEmployee}
-          open={Boolean(editingEmployee)}
-          onOpenChange={(open) => !open && setEditingEmployee(null)}
+          open={Boolean(editingEmployee) || addDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setEditingEmployee(null)
+              setAddDialogOpen(false)
+            }
+          }}
           onSave={handleSave} />
       )}
       <AlertDialog

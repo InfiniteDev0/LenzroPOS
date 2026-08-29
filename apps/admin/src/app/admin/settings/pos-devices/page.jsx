@@ -1,9 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
+import { createClient } from "@lenzro/supabase/client"
+import { notifyError } from "@/lib/errors"
+import { toPosDeviceViewModel } from "@/lib/pos-devices"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -18,9 +21,30 @@ import {
 } from "@/components/ui/table"
 
 export default function Page() {
+  const [supabase] = useState(() => createClient())
   const [devices, setDevices] = useState([])
+  const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingDevice, setEditingDevice] = useState(null)
+
+  useEffect(() => {
+    loadDevices()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function loadDevices() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from("pos_devices")
+      .select("*")
+      .order("created_at", { ascending: false })
+    if (error) {
+      notifyError(error, "Couldn't load POS devices")
+    } else {
+      setDevices(data.map(toPosDeviceViewModel))
+    }
+    setLoading(false)
+  }
 
   function openAdd() {
     setEditingDevice(null)
@@ -32,20 +56,28 @@ export default function Page() {
     setDialogOpen(true)
   }
 
-  function handleSave(form) {
-    if (editingDevice) {
-      setDevices((prev) => prev.map((d) => (d.id === editingDevice.id ? { ...d, ...form } : d)))
-    } else {
-      setDevices((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), name: form.name, status: "Not activated" },
-      ])
+  async function handleSave(form) {
+    const { error } = editingDevice
+      ? await supabase.from("pos_devices").update({ name: form.name }).eq("id", editingDevice.id)
+      : await supabase.from("pos_devices").insert({ name: form.name })
+
+    if (error) {
+      notifyError(error, "Couldn't save the POS device")
+      return
     }
+
+    toast.success(editingDevice ? "Device updated" : "Device added")
+    loadDevices()
   }
 
-  function handleDelete(device) {
-    setDevices((prev) => prev.filter((d) => d.id !== device.id))
+  async function handleDelete(device) {
+    const { error } = await supabase.from("pos_devices").delete().eq("id", device.id)
+    if (error) {
+      notifyError(error, "Couldn't remove the device")
+      return
+    }
     toast.success(`${device.name} removed`)
+    loadDevices()
   }
 
   return (
@@ -69,7 +101,7 @@ export default function Page() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {devices.length === 0 ? (
+              {!loading && devices.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
                     No POS devices yet
@@ -85,7 +117,10 @@ export default function Page() {
                       <Checkbox />
                     </TableCell>
                     <TableCell className="font-medium text-foreground">{device.name}</TableCell>
-                    <TableCell className="text-amber-600">{device.status}</TableCell>
+                    <TableCell
+                      className={device.status === "Activated" ? "text-emerald-600" : "text-amber-600"}>
+                      {device.status}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

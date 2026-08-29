@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { format } from "date-fns"
-import { PrinterIcon } from "lucide-react"
+import { CheckCircle2Icon, PrinterIcon } from "lucide-react"
 
 import { formatCurrency } from "@/lib/currency"
 import { Button } from "@/components/ui/button"
@@ -26,7 +26,7 @@ import {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-export function ReceiptsTable({ transactions, selectedIds, onToggleRow, onToggleRows, onPrintOne }) {
+export function ReceiptsTable({ transactions, selectedIds, onToggleRow, onToggleRows, onPrintOne, onClearOne }) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
@@ -105,13 +105,25 @@ export function ReceiptsTable({ transactions, selectedIds, onToggleRow, onToggle
                     {formatCurrency(t.net)}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      onClick={() => onPrintOne(t)}>
-                      <PrinterIcon className="size-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7"
+                        onClick={() => onPrintOne(t)}>
+                        <PrinterIcon className="size-3.5" />
+                      </Button>
+                      {onClearOne && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-emerald-600 hover:text-emerald-700"
+                          title="Clear this receipt"
+                          onClick={() => onClearOne(t)}>
+                          <CheckCircle2Icon className="size-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
