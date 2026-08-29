@@ -14,16 +14,27 @@ export class BackendConnector {
   }
 
   async fetchCredentials() {
+    const endpoint = process.env.NEXT_PUBLIC_POWERSYNC_URL;
+
+    // A missing endpoint is a deployment mistake, not a runtime state, and
+    // it otherwise surfaces as a confusing sync failure much later. Say so
+    // plainly instead.
+    if (!endpoint) {
+      throw new Error(
+        "NEXT_PUBLIC_POWERSYNC_URL is not set — the till can't reach PowerSync."
+      );
+    }
+
     const {
       data: { session },
     } = await this.supabase.auth.getSession();
 
+    // Null tells PowerSync to hold off and ask again. This is routine, not
+    // a fault: the provider mounts on /auth too, so the first request for
+    // credentials often happens before anyone has signed in.
     if (!session) return null;
 
-    return {
-      endpoint: process.env.NEXT_PUBLIC_POWERSYNC_URL,
-      token: session.access_token,
-    };
+    return { endpoint, token: session.access_token };
   }
 
   async uploadData(database) {
