@@ -173,13 +173,13 @@ Tasks:
 
 ---
 
-## Phase 9 — Settings persistence ✅ (Receipt still outstanding)
+## Phase 9 — Settings persistence ✅
 **Goal:** Settings stops resetting on refresh — and, more importantly, starts *meaning* something. Every toggle has to change what the till does, or come off the screen.
 
 Tasks:
 - **Features**: persist the toggles to Supabase and make the POS honour them ✅ — `account_settings` (migration 0013). Two toggles were **deleted rather than wired**: Time clock (duplicates what `shifts` already records) and Low stock email notifications (needs mail delivery + a scheduler that don't exist here). See IMPROVISING_LOG.md.
 - **Payment types**: persist the list and drive the POS's payment buttons from it ✅ — `payment_types` (migration 0013). Reorder is real (up/down, saved to `sort_order`); the old drag handles were visual-only. The `orders_payment_method_check` constraint had to be dropped — it hardcoded cash/card/mobile, so any custom type would have been rejected by Postgres.
-- **Receipt**: persist logo, header/footer text, toggles, and language; actually connect the uploaded logo to the print flow — **still outstanding**, currently `localStorage` only, in the admin browser, invisible to the POS.
+- **Receipt**: persist logo, header/footer text and toggles, and connect them to both print flows ✅ — folded into `account_settings` (migration 0015), so the POS prints the owner's shop name and logo instead of a hardcoded "Lenzro POS". The language selector was **removed** rather than persisted: nothing translated anything.
 
 **Done when:** every Settings sub-page keeps its values after a refresh, every Features toggle visibly changes the till's behaviour, and a printed receipt actually uses the uploaded logo.
 

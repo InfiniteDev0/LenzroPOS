@@ -16,6 +16,7 @@ import {
 import { filterTransactions, resolveDateRange } from "@/lib/sales-query"
 import { exportTransactionsCsv } from "@/lib/export-csv"
 import { printReceipts } from "@/lib/print-receipts"
+import { defaultReceiptSettings, fetchReceiptSettings } from "@/lib/receipt-settings"
 import { AdminPageHeader } from "@/components/admin-page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -87,6 +88,15 @@ export default function Page() {
   const [itemNames, setItemNames] = useState([])
   const [search, setSearch] = useState("")
   const [selectedIds, setSelectedIds] = useState(() => new Set())
+  // Loaded up front so printing stays synchronous with the click — see
+  // printReceipts for why an await there would trip popup blockers.
+  const [receiptSettings, setReceiptSettings] = useState(defaultReceiptSettings)
+
+  useEffect(() => {
+    fetchReceiptSettings(supabase)
+      .then(setReceiptSettings)
+      .catch(() => {})
+  }, [supabase])
 
   useEffect(() => {
     loadAll()
@@ -169,7 +179,7 @@ export default function Page() {
   }
 
   function handlePrint() {
-    printReceipts(selectedTransactions.length > 0 ? selectedTransactions : filtered)
+    printReceipts(selectedTransactions.length > 0 ? selectedTransactions : filtered, receiptSettings)
   }
 
   function handleExport() {
@@ -295,7 +305,7 @@ export default function Page() {
               selectedIds={selectedIds}
               onToggleRow={toggleRow}
               onToggleRows={toggleRows}
-              onPrintOne={(t) => printReceipts([t])}
+              onPrintOne={(t) => printReceipts([t], receiptSettings)}
               onClearOne={(t) => !t.isFullyPaid && handleClearReceipt(t)} />
           </div>
         </div>

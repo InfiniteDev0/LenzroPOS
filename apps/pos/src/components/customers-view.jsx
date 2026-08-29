@@ -18,6 +18,7 @@ import { formatCurrency } from "@/lib/currency"
 import { notifyError } from "@/lib/errors"
 import { printTicket } from "@/lib/print-ticket"
 import { logCustomerPaymentWithAllocation } from "@/lib/log-customer-payment"
+import { useAccountSettings } from "@/lib/use-settings"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -80,6 +81,7 @@ function CustomerDetail({ customerId, employeeId, onBack }) {
   const [paymentAmount, setPaymentAmount] = useState("")
   const [saving, setSaving] = useState(false)
 
+  const { receipt } = useAccountSettings()
   const { data: customerRows } = useQuery("SELECT * FROM customers WHERE id = ?", [customerId])
   const customer = customerRows?.[0]
 
@@ -205,9 +207,18 @@ function CustomerDetail({ customerId, employeeId, onBack }) {
 
   function printRow(row) {
     printTicket(
-      { id: row.orderId, created_at: row.timestamp, subtotal: row.order.subtotal, tax: row.order.tax, total: row.order.total, payment_method: "tab" },
+      {
+        id: row.orderId,
+        created_at: row.timestamp,
+        subtotal: row.order.subtotal,
+        tax: row.order.tax,
+        total: row.order.total,
+        payment_method: "tab",
+        customer_name: customer?.name ?? null,
+      },
       itemsByOrder.get(row.orderId) ?? [],
-      row.employeeName
+      row.employeeName,
+      receipt
     )
   }
 

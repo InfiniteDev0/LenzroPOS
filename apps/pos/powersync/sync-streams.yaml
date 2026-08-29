@@ -116,7 +116,11 @@ streams:
         account_settings.shifts_enabled,
         account_settings.open_tickets_enabled,
         account_settings.low_stock_alerts_enabled,
-        account_settings.negative_stock_alerts_enabled
+        account_settings.negative_stock_alerts_enabled,
+        account_settings.receipt_header,
+        account_settings.receipt_footer,
+        account_settings.receipt_show_customer,
+        account_settings.receipt_logo_url
       FROM account_settings
       WHERE account_settings.account_id = auth.user_id()
 

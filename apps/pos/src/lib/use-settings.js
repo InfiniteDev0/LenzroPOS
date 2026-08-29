@@ -19,11 +19,21 @@ export const DEFAULT_SETTINGS = {
   negative_stock_alerts_enabled: true,
 }
 
+// What prints on a receipt. Separate from the toggles above because these
+// are text, not booleans, and are passed straight through to the printer.
+export const DEFAULT_RECEIPT = {
+  receipt_header: "",
+  receipt_footer: "",
+  receipt_show_customer: false,
+  receipt_logo_url: null,
+}
+
 export function useAccountSettings() {
   const { data, isLoading } = useQuery("SELECT * FROM account_settings LIMIT 1")
 
+  const row = data?.[0]
+
   const settings = useMemo(() => {
-    const row = data?.[0]
     if (!row) return DEFAULT_SETTINGS;
     // SQLite has no boolean type — PowerSync stores these as 0/1.
     return Object.keys(DEFAULT_SETTINGS).reduce(
@@ -33,9 +43,19 @@ export function useAccountSettings() {
       }),
       {}
     );
-  }, [data])
+  }, [row])
 
-  return { settings, isLoading };
+  const receipt = useMemo(() => {
+    if (!row) return DEFAULT_RECEIPT;
+    return {
+      receipt_header: row.receipt_header ?? "",
+      receipt_footer: row.receipt_footer ?? "",
+      receipt_show_customer: Boolean(row.receipt_show_customer),
+      receipt_logo_url: row.receipt_logo_url ?? null,
+    };
+  }, [row])
+
+  return { settings, receipt, isLoading };
 }
 
 export function usePaymentTypes() {

@@ -16,6 +16,7 @@ import { ReceiptsTable } from "@/components/receipts-table"
 import { TimeRangePicker } from "@/components/time-range-picker"
 import { exportTransactionsCsv } from "@/lib/export-csv"
 import { printReceipts } from "@/lib/print-receipts"
+import { defaultReceiptSettings, fetchReceiptSettings } from "@/lib/receipt-settings"
 import { filterTransactions, resolveDateRange } from "@/lib/sales-query"
 
 export default function Page() {
@@ -35,6 +36,15 @@ export default function Page() {
   const [paymentMethods, setPaymentMethods] = useState([])
   const [search, setSearch] = useState("")
   const [selectedIds, setSelectedIds] = useState(() => new Set())
+  // Loaded up front so printing stays synchronous with the click — see
+  // printReceipts for why an await there would trip popup blockers.
+  const [receiptSettings, setReceiptSettings] = useState(defaultReceiptSettings)
+
+  useEffect(() => {
+    fetchReceiptSettings(supabase)
+      .then(setReceiptSettings)
+      .catch(() => {})
+  }, [supabase])
 
   useEffect(() => {
     let cancelled = false
@@ -126,7 +136,7 @@ export default function Page() {
   }
 
   function handlePrint() {
-    printReceipts(selectedTransactions.length > 0 ? selectedTransactions : filtered)
+    printReceipts(selectedTransactions.length > 0 ? selectedTransactions : filtered, receiptSettings)
   }
 
   function handleExport() {
@@ -180,7 +190,7 @@ export default function Page() {
               selectedIds={selectedIds}
               onToggleRow={toggleRow}
               onToggleRows={toggleRows}
-              onPrintOne={(t) => printReceipts([t])} />
+              onPrintOne={(t) => printReceipts([t], receiptSettings)} />
           )}
         </div>
       </div>

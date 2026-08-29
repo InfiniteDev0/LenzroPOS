@@ -1,7 +1,7 @@
 import { format } from "date-fns"
 
 import { formatCurrency } from "@/lib/currency"
-import { loadReceiptSettings } from "@/lib/receipt-settings"
+import { defaultReceiptSettings } from "@/lib/receipt-settings"
 
 function escapeHtml(str = "") {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -23,17 +23,19 @@ function multilineHtml(text, className) {
 // currently a no-op until that data exists.
 function receiptHtml(t, settings) {
   const employeeName = t.employeeName ?? t.employeeId;
-  const [businessName, ...addressLines] = settings.header.split("\n").filter(Boolean);
+  const [businessName, ...addressLines] = (settings.receipt_header ?? "")
+    .split("\n")
+    .filter(Boolean);
 
   return `
     <div class="receipt">
-      ${settings.printedLogo ? `<img class="logo" src="${settings.printedLogo}" alt="" />` : ""}
+      ${settings.receipt_logo_url ? `<img class="logo" src="${escapeHtml(settings.receipt_logo_url)}" alt="" />` : ""}
       ${businessName ? `<h2>${escapeHtml(businessName)}</h2>` : ""}
       ${addressLines.map((line) => `<p class="muted center">${escapeHtml(line)}</p>`).join("")}
       <hr />
       <p class="muted center">${format(t.timestamp, "d MMM yyyy, h:mm a")}</p>
       <p class="row"><span>ORDER: #${escapeHtml(t.id)}</span><span>CASHIER: ${escapeHtml(employeeName)}</span></p>
-      ${settings.showCustomerInfo ? `<p class="row"><span>CUSTOMER:</span><span>Walk-in</span></p>` : ""}
+      ${settings.receipt_show_customer ? `<p class="row"><span>CUSTOMER:</span><span>${escapeHtml(t.customerName ?? "Walk-in")}</span></p>` : ""}
       <hr class="dashed" />
       <p class="row"><span>${escapeHtml(t.itemName)} &times;${t.quantity}</span><span>${formatCurrency(t.gross)}</span></p>
       <p class="muted">${escapeHtml(t.category)}</p>
@@ -45,7 +47,7 @@ function receiptHtml(t, settings) {
       <hr class="dashed" />
       <p class="row"><span>PAYMENT METHOD:</span><span>${escapeHtml(t.paymentMethod).toUpperCase()}</span></p>
       <hr />
-      ${multilineHtml(settings.footer, "muted center")}
+      ${multilineHtml(settings.receipt_footer ?? "", "muted center")}
       <div class="barcode"></div>
       <p class="muted center barcode-id">${escapeHtml(t.id)}</p>
     </div>
@@ -54,10 +56,15 @@ function receiptHtml(t, settings) {
 
 // Opens a print-ready window with one receipt per transaction (page break
 // between each) and triggers the browser print dialog.
-export function printReceipts(transactions) {
+//
+// Receipt settings are passed in rather than fetched here: they live in
+// Supabase now, and awaiting them would put an async gap between the
+// click and window.open(), which is exactly what popup blockers kill.
+// Callers load them once on mount and hand them over.
+export function printReceipts(transactions, receiptSettings) {
   if (transactions.length === 0) return;
 
-  const settings = loadReceiptSettings();
+  const settings = receiptSettings ?? defaultReceiptSettings;
   const win = window.open("", "_blank", "width=420,height=640");
   if (!win) return;
 

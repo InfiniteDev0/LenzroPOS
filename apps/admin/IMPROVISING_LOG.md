@@ -86,3 +86,12 @@ Built at the admin app's root route (`/`) rather than as the separate `apps/www`
 
 Copy claims only what ships today â€” offline selling, shifts and drawer counts, open tabs, stock badges, reports, receipts and end-of-day. No pricing, no testimonials, no logos: billing doesn't exist and neither do customers, and inventing either would be a lie a real visitor could catch. Screenshots are the actual app (`/item.png`, `/customer.png`), not mockups. Design direction is the one approved in the earlier canvas mockup â€” emerald accent, real elevation, native `<details>` FAQ â€” and still deliberately not a copy of the referenced Behance case study's palette or layout.
 
+
+### Phase 9 — Receipt settings were the last localStorage holdout
+Settings > Receipt wrote to `lenzro:receipt-settings` in the admin browser's own localStorage. So the header, footer and logo were invisible to any other machine the owner opened the back office on, and — the part that actually mattered — completely invisible to the POS, which printed a hardcoded `<h2>Lenzro POS</h2>` on every receipt it handed a customer no matter what was configured.
+
+Folded into `account_settings` (migration 0015) rather than given its own table: it's already one row per account and already synced down to the till, so this needed no new table, no new sync stream and no new schema entry. The logo is a URL into the same `PosImages` bucket item photos use, **not** the data URI the old version stored — an inlined image would be copied onto the synced row and bloat every till's local database for nothing.
+
+**The receipt "language" selector was removed, not persisted.** It offered English/Swahili and nothing translated anything. Same rule as the Features toggles: a setting that does nothing is worse than no setting.
+
+**`printReceipts()` now takes settings as an argument instead of loading them itself.** They live in Supabase now, and awaiting a fetch between the click and `window.open()` is exactly what popup blockers kill. Both callers load them once on mount and hand them over.

@@ -152,7 +152,7 @@ export default function Page() {
   const [openBusinessDay, setOpenBusinessDay] = useState(null)
   const [activeView, setActiveView] = useState("order")
 
-  const { settings } = useAccountSettings()
+  const { settings, receipt } = useAccountSettings()
   const { paymentTypes } = usePaymentTypes()
   const shiftsEnabled = settings.shifts_enabled
 
@@ -418,6 +418,7 @@ export default function Page() {
       total,
       payment_method: effectivePaymentMethod,
       discount_amount: discountAmount,
+      customer_name: customerName || null,
     }
     const previewItems = cart.map((line) => ({
       quantity: line.quantity,
@@ -425,7 +426,7 @@ export default function Page() {
       variant_label: line.variant_label,
       line_total: line.unit_price * line.quantity,
     }))
-    printTicket(previewOrder, previewItems, staffSession.employeeName)
+    printTicket(previewOrder, previewItems, staffSession.employeeName, receipt)
   }
 
   if (!deviceId) {

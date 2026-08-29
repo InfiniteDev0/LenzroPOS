@@ -209,6 +209,13 @@ const account_settings = new Table({
   open_tickets_enabled: column.integer,
   low_stock_alerts_enabled: column.integer,
   negative_stock_alerts_enabled: column.integer,
+  // What prints on a receipt. Lived in the admin browser's localStorage
+  // until migration 0015, which is why the till used to print a
+  // hardcoded "Lenzro POS" header no matter what the owner configured.
+  receipt_header: column.text,
+  receipt_footer: column.text,
+  receipt_show_customer: column.integer,
+  receipt_logo_url: column.text,
 });
 
 // The payment buttons at checkout, defined by the owner in Settings >

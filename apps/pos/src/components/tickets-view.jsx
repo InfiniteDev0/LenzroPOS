@@ -6,6 +6,7 @@ import { CreditCardIcon, PrinterIcon, SmartphoneIcon, WalletIcon } from "lucide-
 
 import { formatCurrency } from "@/lib/currency"
 import { printTicket } from "@/lib/print-ticket"
+import { useAccountSettings } from "@/lib/use-settings"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -52,6 +53,7 @@ function formatShiftLabel(shift, isCurrent) {
 export function TicketsView({ shiftId, deviceId, employeeName }) {
   const [openOrderId, setOpenOrderId] = useState(null)
   const [selectedShiftId, setSelectedShiftId] = useState(shiftId)
+  const { receipt } = useAccountSettings()
 
   // With Shifts turned off in Settings > Features there are no shifts to
   // group by, so tickets fall back to today's orders — the cashier still
@@ -222,7 +224,7 @@ export function TicketsView({ shiftId, deviceId, employeeName }) {
                 <Button
                   variant="outline"
                   className="h-11 gap-2 px-4"
-                  onClick={() => printTicket(order, items, employeeName)}
+                  onClick={() => printTicket(order, items, employeeName, receipt)}
                 >
                   <PrinterIcon className="size-4" />
                   Print receipt
