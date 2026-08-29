@@ -84,10 +84,21 @@ export default function Page() {
     <>
       <Card className="gap-0 overflow-hidden py-0">
         <div className="border-b p-4">
-          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-600/90" onClick={openAdd}>
-            <PlusIcon />
-            Add POS
-          </Button>
+          {/* One till per account — enforced in the database by migration
+              0014. Shifts, business days and the drawer count are all
+              scoped per device with nothing reconciling across them, so a
+              second till would quietly keep a second set of books. */}
+          {devices.length === 0 ? (
+            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-600/90" onClick={openAdd}>
+              <PlusIcon />
+              Add POS
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Your account has one till. Tap it to rename it — or activate it on a new machine by
+              opening the POS app there and signing in.
+            </p>
+          )}
         </div>
         <CardContent className="p-0">
           <Table>

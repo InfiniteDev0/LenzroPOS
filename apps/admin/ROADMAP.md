@@ -173,16 +173,29 @@ Tasks:
 
 ---
 
-## Phase 9 — Settings persistence
-**Goal:** Settings stops resetting on refresh.
+## Phase 9 — Settings persistence ✅ (Receipt still outstanding)
+**Goal:** Settings stops resetting on refresh — and, more importantly, starts *meaning* something. Every toggle has to change what the till does, or come off the screen.
 
 Tasks:
-- **Features**: persist the 9 toggles (Shifts, Time clock,, Low stock notifications, Negative stock alerts, Weight-embedded barcodes) to Supabase
-- **Payment types**: persist the list; wire up the drag-to-reorder that's currently visual-only
-- **Receipt**: persist logo, header/footer text, toggles, and language; actually connect the uploaded logo to the print flow (currently disconnected)
+- **Features**: persist the toggles to Supabase and make the POS honour them ✅ — `account_settings` (migration 0013). Two toggles were **deleted rather than wired**: Time clock (duplicates what `shifts` already records) and Low stock email notifications (needs mail delivery + a scheduler that don't exist here). See IMPROVISING_LOG.md.
+- **Payment types**: persist the list and drive the POS's payment buttons from it ✅ — `payment_types` (migration 0013). Reorder is real (up/down, saved to `sort_order`); the old drag handles were visual-only. The `orders_payment_method_check` constraint had to be dropped — it hardcoded cash/card/mobile, so any custom type would have been rejected by Postgres.
+- **Receipt**: persist logo, header/footer text, toggles, and language; actually connect the uploaded logo to the print flow — **still outstanding**, currently `localStorage` only, in the admin browser, invisible to the POS.
 
+**Done when:** every Settings sub-page keeps its values after a refresh, every Features toggle visibly changes the till's behaviour, and a printed receipt actually uses the uploaded logo.
 
-**Done when:** every Settings sub-page keeps its values after a refresh, and a printed receipt actually uses the uploaded logo.
+---
+
+## Phase 9.5 — Business days, one device, PIN-only daily auth ✅
+**Goal:** close the gaps that made the app not hang together end to end. Unplanned, driven by using it.
+
+Tasks:
+- `business_days` table ✅ — the trading day that didn't exist. Opens implicitly with the first shift, closed explicitly from "End business day", producing a Z-report that snapshots its totals so they can't drift later. Shifts now carry a `business_day_id`.
+- One POS device per account ✅ (migration 0014) — multi-till was never reconciled across devices, so it quietly kept two sets of books.
+- PIN as the daily credential ✅ — staff sign-in and shift-open are now separate steps, so Shifts can be turned off without losing who rang up each sale. The POS header's Supabase sign-out is gone; handing over the till is a PIN switch. A real sign-out lives on the sign-in screen and is blocked while a shift is open.
+- Public marketing landing page ✅ — at `apps/admin`'s root route, not a separate app.
+- PowerSync Sync Streams config version-controlled ✅ — `apps/pos/powersync/sync-streams.yaml`.
+
+**Done when:** a fresh device can be set up once with an email and password, then run for weeks on PINs alone — open shifts, sell, close the day — and every Settings screen the owner touches changes something real at the counter.
 
 ---
 
