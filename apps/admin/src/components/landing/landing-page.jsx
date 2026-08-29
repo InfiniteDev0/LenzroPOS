@@ -13,17 +13,12 @@ import {
   TrendingUpIcon,
 } from "lucide-react";
 
+import { POS_URL } from "@/lib/pos-app";
 import { Button } from "@/components/ui/button";
 
 // Everything on this page is something the product actually does today.
 // No "coming soon" features dressed up as shipped ones — a landing page
 // that oversells is a support ticket with extra steps.
-
-// The POS is deployed separately from the back office, so its address
-// isn't derivable from this app. The default is the current production
-// till; set NEXT_PUBLIC_POS_URL to point a deployment somewhere else
-// (a preview, a custom domain) without touching this file.
-const POS_URL = process.env.NEXT_PUBLIC_POS_URL ?? "https://lenzro-pos-system.vercel.app";
 
 const FEATURES = [
   {

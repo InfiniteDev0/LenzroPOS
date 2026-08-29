@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { PlusIcon } from "lucide-react"
+import { CheckIcon, CopyIcon, ExternalLinkIcon, MonitorSmartphoneIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { createClient } from "@lenzro/supabase/client"
 import { notifyError } from "@/lib/errors"
+import { POS_URL } from "@/lib/pos-app"
 import { toPosDeviceViewModel } from "@/lib/pos-devices"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -26,6 +27,19 @@ export default function Page() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingDevice, setEditingDevice] = useState(null)
+  const [copied, setCopied] = useState(false)
+
+  // For sending the link to whoever is setting up the counter machine,
+  // which is usually not the person sitting in the back office.
+  async function copyPosUrl() {
+    try {
+      await navigator.clipboard.writeText(POS_URL)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error("Couldn't copy — select the link and copy it by hand")
+    }
+  }
 
   useEffect(() => {
     loadDevices()
@@ -82,6 +96,43 @@ export default function Page() {
 
   return (
     <>
+      {/* Creating a device row here does nothing on its own, and until
+          this card existed there was no route from "I made a POS" to
+          "…so where is it?" — the only link to the till lived on the
+          public landing page, which nobody sees again after signing in. */}
+      <Card className="mb-4 gap-0 overflow-hidden border-emerald-600/40 py-0">
+        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-600">
+            <MonitorSmartphoneIcon className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-medium text-foreground">Open the till on your counter machine</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              There&apos;s nothing to download from an app store. On the laptop, tablet or terminal
+              you&apos;ll sell from, open the link below in Chrome or Edge and install it from the
+              address bar (&ldquo;Install app&rdquo;, or &ldquo;Add to Home Screen&rdquo; on a
+              tablet). Sign in once with this account, pick the device below, and from then on your
+              staff only ever use their PINs.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                className="gap-2 bg-emerald-600 hover:bg-emerald-600/90"
+                render={<a href={POS_URL} target="_blank" rel="noreferrer" />}>
+                <ExternalLinkIcon />
+                Open the till
+              </Button>
+              <code className="rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                {POS_URL}
+              </code>
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={copyPosUrl}>
+                {copied ? <CheckIcon /> : <CopyIcon />}
+                {copied ? "Copied" : "Copy link"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
       <Card className="gap-0 overflow-hidden py-0">
         <div className="border-b p-4">
           {/* One till per account — enforced in the database by migration
