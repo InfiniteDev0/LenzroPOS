@@ -19,6 +19,11 @@ import { Button } from "@/components/ui/button";
 // No "coming soon" features dressed up as shipped ones — a landing page
 // that oversells is a support ticket with extra steps.
 
+// The POS is deployed separately from the back office, so its address is
+// configuration, not a constant. Unset simply means the "Open the till"
+// button doesn't render — better than shipping a link to nowhere.
+const POS_URL = process.env.NEXT_PUBLIC_POS_URL;
+
 const FEATURES = [
   {
     icon: CloudOffIcon,
@@ -117,6 +122,9 @@ export function LandingPage({ signedIn }) {
             <a href="#features" className="transition-colors hover:text-foreground">
               Features
             </a>
+            <a href="#download" className="transition-colors hover:text-foreground">
+              Get the till
+            </a>
             <a href="#how" className="transition-colors hover:text-foreground">
               How it works
             </a>
@@ -180,9 +188,9 @@ export function LandingPage({ signedIn }) {
                 size="lg"
                 variant="outline"
                 className="h-12 w-full px-6 text-base sm:w-auto"
-                render={<a href="#how" />}
+                render={<a href="#download" />}
               >
-                See how it works
+                Get the till
               </Button>
             </div>
 
@@ -191,14 +199,20 @@ export function LandingPage({ signedIn }) {
             </p>
           </div>
 
-          {/* Real screenshots of the real app. */}
+          {/* A real screenshot of the real back office, in a window frame
+              so it reads as the product rather than as decoration. */}
           <div className="mt-14 sm:mt-20">
-            <div className="relative rounded-2xl border border-border/70 bg-card p-1.5 shadow-2xl shadow-emerald-950/20 sm:rounded-3xl sm:p-2">
+            <div className="relative overflow-hidden rounded-xl border border-border/70 bg-card shadow-2xl shadow-emerald-950/30 sm:rounded-2xl">
+              <div className="flex items-center gap-1.5 border-b border-border/70 bg-muted/40 px-4 py-3">
+                <span className="size-2.5 rounded-full bg-red-400/70" />
+                <span className="size-2.5 rounded-full bg-amber-400/70" />
+                <span className="size-2.5 rounded-full bg-emerald-400/70" />
+              </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/item.png"
-                alt="The Lenzro back office, showing the item list with prices, categories and stock"
-                className="w-full rounded-xl sm:rounded-2xl"
+                src="/dashboard.png"
+                alt="The Lenzro back office showing today's gross sales, refunds, discounts, net sales and gross profit"
+                className="w-full"
               />
             </div>
           </div>
@@ -291,13 +305,126 @@ export function LandingPage({ signedIn }) {
               ))}
             </ul>
           </div>
-          <div className="rounded-2xl border border-border bg-card p-1.5 shadow-xl sm:p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/customer.png"
-              alt="A customer's open tab in Lenzro, showing what they've taken, paid and still owe"
-              className="w-full rounded-xl"
-            />
+          {/* Deliberately not a screenshot: the only real one is the back
+              office shot in the hero, and a stock illustration here would
+              be decoration pretending to be product. */}
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-xl sm:p-8">
+            <p className="text-sm text-muted-foreground">A tab at a glance</p>
+            <div className="mt-5 grid grid-cols-3 gap-4">
+              {[
+                { label: "Taken", value: "KSh 4,850" },
+                { label: "Paid", value: "KSh 3,000" },
+                { label: "Owed", value: "KSh 1,850", accent: true },
+              ].map((stat) => (
+                <div key={stat.label}>
+                  <p className="text-xs text-muted-foreground">{stat.label}</p>
+                  <p
+                    className={`mt-1 text-lg font-semibold sm:text-xl ${stat.accent ? "text-emerald-500" : ""}`}
+                  >
+                    {stat.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 space-y-3 border-t border-border pt-5">
+              {[
+                { when: "Tue, 3:40 pm", what: "2 chai, 1 mandazi", amount: "KSh 350" },
+                { when: "Wed, 1:12 pm", what: "Lunch × 2", amount: "KSh 900" },
+                { when: "Fri, 6:05 pm", what: "Soda × 4", amount: "KSh 600" },
+              ].map((row) => (
+                <div key={row.when} className="flex items-baseline justify-between gap-4 text-sm">
+                  <span className="min-w-0">
+                    <span className="text-muted-foreground">{row.when} · </span>
+                    {row.what}
+                  </span>
+                  <span className="shrink-0 font-medium">{row.amount}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------ get the till */}
+      {/* The POS is a separate deployment, so its URL comes from the
+          environment rather than being hardcoded. With it unset the
+          section still explains the install, it just doesn't offer a
+          dead link. */}
+      <section id="download" className="border-y border-border/60 bg-muted/30">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+            <div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-600/30 bg-emerald-600/10 px-3 py-1 text-sm font-medium text-emerald-400">
+                <MonitorSmartphoneIcon className="size-3.5" />
+                Get the till
+              </span>
+              <h2 className="mt-5 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+                Nothing to download from a store
+              </h2>
+              <p className="mt-4 text-base text-muted-foreground sm:text-lg">
+                The till is a web app that installs itself. Open it once on the machine at your
+                counter, install it, and it opens like any other app — full screen, its own icon,
+                no browser bar, and it keeps working when the internet drops.
+              </p>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                {POS_URL ? (
+                  <Button
+                    size="lg"
+                    className="h-12 w-full gap-2 bg-emerald-600 px-6 text-base hover:bg-emerald-600/90 sm:w-auto"
+                    render={<a href={POS_URL} target="_blank" rel="noreferrer" />}
+                  >
+                    Open the till
+                    <ArrowRightIcon className="size-4" />
+                  </Button>
+                ) : null}
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-12 w-full px-6 text-base sm:w-auto"
+                  render={<Link href={primaryHref} />}
+                >
+                  {signedIn ? "Back office" : "Create your account first"}
+                </Button>
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">
+                You&apos;ll sign in once with your owner account to link the device. After that
+                it&apos;s PINs only.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card p-6 sm:p-8">
+              <p className="text-sm font-medium text-foreground">Installing it</p>
+              <ol className="mt-5 space-y-5">
+                {[
+                  {
+                    n: "1",
+                    title: "Open the till link in Chrome or Edge",
+                    body: "On the laptop, tablet or terminal you'll actually sell from.",
+                  },
+                  {
+                    n: "2",
+                    title: "Install it",
+                    body: "Use the install icon in the address bar, or the browser menu — “Install app” on desktop, “Add to Home Screen” on a tablet.",
+                  },
+                  {
+                    n: "3",
+                    title: "Sign in once, then activate the device",
+                    body: "Give the till a name. That's the last time anyone types a password on it.",
+                  },
+                ].map((step) => (
+                  <li key={step.n} className="flex gap-4">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-emerald-600/10 text-sm font-semibold text-emerald-500">
+                      {step.n}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-medium">{step.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{step.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
           </div>
         </div>
       </section>
