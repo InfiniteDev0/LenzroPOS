@@ -103,3 +103,10 @@ The owner can review closed days at `/admin/end-of-day`, expandable to the shift
 
 ### Sidebar was showing shadcn's sample user
 `app-sidebar.jsx` carried the stock shadcn `data.user` block (`shadcn` / `m@example.com` / a missing avatar path), passed straight into `NavUser`. Now loaded for real from `profiles.full_name` plus the auth user's email, with generated initials instead of a broken image. "Upgrade to Pro", "Billing" and "Notifications" came off that menu — billing is Phase 10 and notifications don't exist, so all three were dead items. Same rule being applied to the Features toggles and the receipt language selector: ship the control or remove it, don't fake it.
+
+### "Unknown" in the employee filter — orders had no direct link to a person
+The Sales Report's employee breakdown reached an employee only through the shift (`orders.shift_id -> shifts.employee_id`), so any order without a shift had no employee and rendered as "Unknown". Two ways that happens: orders taken before Phase 7 shifts existed, and — newly, and much worse — every order taken with Shifts switched off in Settings > Features, where `shift_id` is null by design.
+
+Someone is always signed in at the till: the PIN screen is mandatory whether or not shifts are on. The employee was always known at the moment of sale, it just had nowhere to be recorded. Migration `0016` adds `orders.employee_id`, written by the POS from the staff session on every checkout, and backfills existing rows from the shift chain. Readers prefer `orders.employee_id` and fall back to the shift chain for older rows.
+
+The remaining fallback label is now "Unattributed" rather than "Unknown" — it only applies to orders that genuinely predate employee tracking, and it should say the data is missing rather than imply some mystery person rang them up.

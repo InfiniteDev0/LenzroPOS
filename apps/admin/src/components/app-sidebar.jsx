@@ -92,16 +92,13 @@ const data = {
       ),
     },
     {
+      // A single destination — no submenu, since "Employees > Employee
+      // list" was one collapsible wrapping one link.
       title: "Employees",
-      url: "#",
+      url: "/admin/employees",
       icon: (
         <UsersIcon />
       ),
-      items: [
-        {
-          title: "Employee list",
-          url: "/admin/employees",}
-      ],
     },
     {
       title: "Open Tabs",
@@ -149,19 +146,19 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        {/* When the sidebar collapses to icons the wordmark has to go with
-            it, or it wraps into a column of single words down the rail. */}
-        <div
-          size="lg"
-          className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-        >
-          <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <img className="size-4" />
-          </div>
-          <div className="grid flex-1 text-left text-sm leading-tight">
-            <span className="truncate font-medium">Lenzro POS</span>
-            <span className="truncate text-xs">Point of sale</span>
-          </div>
+        {/* Collapsed, this has to read as one more icon in the rail: the
+            wordmark hides, and the dark plaque and padding go with it so
+            the logo lines up with the nav icons below instead of sitting
+            in an oversized box of its own. */}
+        <div className="flex items-center gap-2 overflow-hidden rounded-md bg-foreground p-2 text-white group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 dark:bg-background dark:group-data-[collapsible=icon]:bg-transparent">
+          <img
+            src="/logo.png"
+            className="size-10 shrink-0 rounded-xl group-data-[collapsible=icon]:size-8"
+            alt="" />
+          <p className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
+            <span className="truncate">Lenzro POS</span>
+            <span className="truncate text-xs text-zinc-400">point of sale</span>
+          </p>
         </div>
       </SidebarHeader>
       <SidebarContent>

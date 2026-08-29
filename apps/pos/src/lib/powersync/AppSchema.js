@@ -73,6 +73,10 @@ const orders = new Table({
   total: column.real,
   payment_method: column.text,
   shift_id: column.text,
+  // Who was signed in at the till. Set independently of the shift so a
+  // sale is still attributable with Shifts switched off, where shift_id
+  // is null by design.
+  employee_id: column.text,
   // Set client-side at insert time (like `id`) rather than left for
   // Postgres's `default now()` — the Tickets view needs to sort/show a
   // real timestamp immediately after checkout, before this row has ever

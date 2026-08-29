@@ -77,7 +77,7 @@ export async function fetchCustomerTabDetail(supabase, customerId) {
     supabase
       .from("orders")
       .select(
-        "id, subtotal, tax, total, payment_method, created_at, shifts(employee_id, employees(full_name)), order_items(id, name, variant_label, quantity, line_total, items(categories(name)))"
+        "id, subtotal, tax, total, payment_method, created_at, employee_id, employees(full_name), shifts(employee_id, employees(full_name)), order_items(id, name, variant_label, quantity, line_total, items(categories(name)))"
       )
       .eq("customer_id", customerId)
       .eq("payment_method", "tab")
@@ -117,7 +117,10 @@ export async function fetchCustomerTabDetail(supabase, customerId) {
           created_at: o.created_at,
           timestamp: new Date(o.created_at),
           employeeId: o.shifts?.employee_id ?? null,
-          employeeName: o.shifts?.employees?.full_name ?? "Unknown",
+          // Same precedence as real-sales-data.js: the employee recorded
+          // on the order, then the shift chain for older rows.
+          employeeName:
+            o.employees?.full_name ?? o.shifts?.employees?.full_name ?? "Unattributed",
           amountPaid,
           remaining: Math.max(0, Math.round((total - amountPaid) * 100) / 100),
           isFullyPaid: amountPaid >= total - 0.004,

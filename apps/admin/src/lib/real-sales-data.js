@@ -22,6 +22,8 @@ const PAYMENT_LABELS = { cash: "Cash", card: "Card", mobile: "Mobile", tab: "Tab
 
 const ORDERS_SELECT = `
   id, created_at, payment_method, status, total, customer_id, customer_name,
+  employee_id,
+  employees ( full_name ),
   shifts ( employee_id, employees ( full_name ) ),
   order_items (
     id, name, quantity, unit_price, line_total, item_id,
@@ -77,12 +79,19 @@ export async function fetchRealTransactions(supabase) {
       revenueDate = settledOn;
     }
 
-    // Attributed via the shift it was rung up under (Phase 7), not
-    // `created_by` — every order's created_by is the same shared owner
-    // session regardless of which cashier actually rang it up, so it
-    // never reflected the real employee.
-    const employeeId = order.shifts?.employee_id ?? null;
-    const employeeName = order.shifts?.employees?.full_name ?? "Unknown";
+    // `orders.employee_id` first (who was signed in at the till), then
+    // the shift chain for rows written before that column existed. Never
+    // `created_by` — that's the same shared owner session on every order
+    // regardless of which cashier rang it up, so it never reflected the
+    // real employee.
+    //
+    // Only orders predating employee tracking entirely fall through to
+    // "Unattributed"; with Shifts switched off there's still a signed-in
+    // employee on every sale, which is why the shift chain alone wasn't
+    // enough.
+    const employeeId = order.employee_id ?? order.shifts?.employee_id ?? null;
+    const employeeName =
+      order.employees?.full_name ?? order.shifts?.employees?.full_name ?? "Unattributed";
 
     return (order.order_items ?? []).map((oi) => {
       const quantity = Number(oi.quantity);

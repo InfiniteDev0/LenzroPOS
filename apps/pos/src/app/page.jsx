@@ -348,9 +348,9 @@ export default function Page() {
     try {
       await powersync.execute(
         `INSERT INTO orders
-           (id, subtotal, tax, total, payment_method, payment_type_id, shift_id, created_at,
-            discount_type_id, discount_amount, customer_id, customer_name, order_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, subtotal, tax, total, payment_method, payment_type_id, shift_id, employee_id,
+            created_at, discount_type_id, discount_amount, customer_id, customer_name, order_type)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           subtotal,
@@ -359,6 +359,9 @@ export default function Page() {
           effectivePaymentMethod,
           onTab ? null : (selectedPaymentType?.id ?? null),
           activeShift?.shiftId ?? null,
+          // Recorded separately from the shift so the sale is still
+          // attributable when Shifts is switched off.
+          staffSession.employeeId,
           new Date().toISOString(),
           discountType?.id ?? null,
           discountAmount,
