@@ -95,3 +95,11 @@ Folded into `account_settings` (migration 0015) rather than given its own table:
 **The receipt "language" selector was removed, not persisted.** It offered English/Swahili and nothing translated anything. Same rule as the Features toggles: a setting that does nothing is worse than no setting.
 
 **`printReceipts()` now takes settings as an argument instead of loading them itself.** They live in Supabase now, and awaiting a fetch between the click and `window.open()` is exactly what popup blockers kill. Both callers load them once on mount and hand them over.
+
+### Phase 9.5 — "End business day" had to live on the shift-start screen
+First build put End business day in the POS header, next to End shift. That made it unreachable: you can only close the day once no shift is open, but closing a shift immediately returns the cashier to the shift-start screen — so the button vanished at exactly the moment it became usable. It now lives on the shift-start screen, under the opening-float form, which is the only screen where "the day is over" is actually true.
+
+The owner can review closed days at `/admin/end-of-day`, expandable to the shifts that made up each one (who worked, and whose drawer was over or short). **Those totals are read off the `business_days` row, never recomputed** — they were snapshotted at close, and recomputing would quietly disagree with the report that was printed and signed off at the time.
+
+### Sidebar was showing shadcn's sample user
+`app-sidebar.jsx` carried the stock shadcn `data.user` block (`shadcn` / `m@example.com` / a missing avatar path), passed straight into `NavUser`. Now loaded for real from `profiles.full_name` plus the auth user's email, with generated initials instead of a broken image. "Upgrade to Pro", "Billing" and "Notifications" came off that menu — billing is Phase 10 and notifications don't exist, so all three were dead items. Same rule being applied to the Features toggles and the receipt language selector: ship the control or remove it, don't fake it.

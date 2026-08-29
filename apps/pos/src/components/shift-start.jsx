@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { usePowerSync, useQuery } from "@powersync/react"
-import { ArrowLeftIcon, SunriseIcon } from "lucide-react"
+import { ArrowLeftIcon, MoonIcon, SunriseIcon } from "lucide-react"
 
 import { formatCurrency } from "@/lib/currency"
 import { notifyError } from "@/lib/errors"
@@ -10,6 +10,7 @@ import { setShiftSession } from "@/lib/pos-session"
 import { ensureBusinessDayOpen, getOpenBusinessDay } from "@/lib/business-day"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EndDayDialog } from "@/components/end-day-dialog"
 
 // Opening the drawer for a shift. Who you are was already settled at the
 // PIN screen (StaffSignIn) — this step is only about money, and only
@@ -24,6 +25,7 @@ export function ShiftStart({ deviceId, staff, onBack }) {
   const [busy, setBusy] = useState(false)
   const [openDay, setOpenDay] = useState(null)
   const [dayChecked, setDayChecked] = useState(false)
+  const [endDayOpen, setEndDayOpen] = useState(false)
 
   const { data: lastClosedShift } = useQuery(
     `SELECT closing_cash_counted FROM shifts
@@ -131,7 +133,40 @@ export function ShiftStart({ deviceId, staff, onBack }) {
         >
           {busy ? "Starting…" : `Start shift with ${formatCurrency(Number(openingFloat) || 0)}`}
         </Button>
+
+        {/* Closing a shift lands the cashier back here, so this is the
+            only screen where "the day is over" is actually true — and
+            therefore the only place End business day can live. */}
+        {openDay && (
+          <div className="border-t border-border pt-5">
+            <p className="mb-3 text-sm text-muted-foreground">
+              Done for the day? Close it out and print the day&apos;s report.
+            </p>
+            <Button
+              variant="outline"
+              className="h-12 w-full gap-2 text-base"
+              onClick={() => setEndDayOpen(true)}
+            >
+              <MoonIcon className="size-5" />
+              End business day
+            </Button>
+          </div>
+        )}
       </div>
+
+      {openDay && (
+        <EndDayDialog
+          businessDay={openDay}
+          employeeId={staff.employeeId}
+          employeeName={staff.employeeName}
+          open={endDayOpen}
+          onOpenChange={setEndDayOpen}
+          onClosed={() => {
+            setEndDayOpen(false)
+            setOpenDay(null)
+          }}
+        />
+      )}
     </div>
   );
 }
