@@ -126,3 +126,12 @@ streams:
 
   payment_types:
     query: SELECT * FROM payment_types WHERE account_id = auth.user_id()
+
+# Required. Without it PowerSync falls back to the alpha Sync Streams
+# syntax and rejects every stream above with "Sync streams require
+# edition 2 or later". PowerSync's dashboard may suggest upgrading this
+# to edition 3 for newer features — that's a deliberate change to make on
+# its own, verifying the deploy still validates, not something to bump
+# casually while shipping other work.
+config:
+  edition: 2
