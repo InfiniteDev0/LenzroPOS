@@ -169,3 +169,12 @@ The damage went far beyond that one row. **PowerSync holds back applying downloa
 `uploadData` now distinguishes rejections that can never succeed from ones worth retrying. Postgres integrity violations (SQLSTATE `23xxx` — unique, foreign key, check) are deterministic: the same write fails identically every time. Those are discarded, loudly, so the queue keeps moving. Everything else — transport failures, 5xx, and notably 401s, where the token merely needs refreshing — still retries and is never dropped.
 
 Discarding a write is not something to do casually, and it's only correct here because the alternative is worse: one permanently-invalid row otherwise stops every subsequent order from ever uploading, and stops all downloads with it.
+
+### The till synced nothing because Sync Streams don't sync by default
+The whole "empty till" saga — no staff on the PIN screen, no menu, an empty `pos_devices` table that made device activation loop forever creating duplicates — came down to one missing line per stream.
+
+**Sync Streams have `auto_subscribe: false` by default.** A stream is a query the client may subscribe to, not data that is pushed automatically; the client is expected to call `syncStream(name)` for what it wants. Our config defined eighteen perfectly valid streams, deployed cleanly, and delivered nothing to anyone. There is no error for this anywhere: the config is valid, the instance is healthy, the client connects successfully, and the local database is simply empty. Every symptom therefore pointed somewhere else — worker assets, service workers, schema columns, the upload queue — and each of those turned out to have a genuine bug of its own, which made the wrong trail look convincing for a long time.
+
+Every stream now carries `auto_subscribe: true`, which is right for this app: one account, one till, offline-first, wanting all of its own data at all times. Selective subscription would only matter with far more data than a single restaurant generates.
+
+**If the till ever comes up empty again with no errors, check this first.** A missing `auto_subscribe` is silent by design, and nothing else in the stack will tell you.

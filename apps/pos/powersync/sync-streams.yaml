@@ -8,7 +8,15 @@
 #
 # Every table here must also exist in AppSchema.js, and vice versa.
 #
-# Three rules this config works around:
+# Four rules this config works around:
+#
+#   0. `auto_subscribe: true` on EVERY stream. Sync Streams sync nothing
+#      by default — the client is expected to subscribe to the streams it
+#      wants, and `auto_subscribe` defaults to false. A valid, deployed
+#      config with none of these therefore syncs an empty database to
+#      every device and reports no error anywhere, which is exactly as
+#      confusing as it sounds. This till is offline-first for a single
+#      account, so it wants all of its own data, always.
 #
 #   1. A stream SELECTs from exactly ONE table. Joining to reach a parent
 #      is rejected with "Must SELECT from a single table". Tables with no
@@ -32,12 +40,15 @@
 streams:
   # --- Menu -----------------------------------------------------------
   menu_categories:
+    auto_subscribe: true
     query: SELECT * FROM categories WHERE account_id = auth.user_id()
 
   menu_items:
+    auto_subscribe: true
     query: SELECT * FROM items WHERE account_id = auth.user_id()
 
   menu_item_variants:
+    auto_subscribe: true
     query: |
       SELECT * FROM item_variants
       WHERE item_id IN (
@@ -46,6 +57,7 @@ streams:
 
   # Two levels down from items, so the subquery nests.
   menu_item_variant_values:
+    auto_subscribe: true
     query: |
       SELECT * FROM item_variant_values
       WHERE variant_id IN (
@@ -57,6 +69,7 @@ streams:
   # PK is item_id, aliased to id — which forces every other column to be
   # listed explicitly (see rule 2 above).
   stock_levels:
+    auto_subscribe: true
     query: |
       SELECT
         item_id as id,
@@ -70,9 +83,11 @@ streams:
 
   # --- Sales ----------------------------------------------------------
   orders:
+    auto_subscribe: true
     query: SELECT * FROM orders WHERE account_id = auth.user_id()
 
   order_items:
+    auto_subscribe: true
     query: |
       SELECT * FROM order_items
       WHERE order_id IN (
@@ -80,19 +95,24 @@ streams:
       )
 
   discount_types:
+    auto_subscribe: true
     query: SELECT * FROM discount_types WHERE account_id = auth.user_id()
 
   # --- Staff, devices, shifts, trading days ---------------------------
   employees:
+    auto_subscribe: true
     query: SELECT * FROM employees WHERE account_id = auth.user_id()
 
   pos_devices:
+    auto_subscribe: true
     query: SELECT * FROM pos_devices WHERE account_id = auth.user_id()
 
   shifts:
+    auto_subscribe: true
     query: SELECT * FROM shifts WHERE account_id = auth.user_id()
 
   shift_expenses:
+    auto_subscribe: true
     query: |
       SELECT * FROM shift_expenses
       WHERE shift_id IN (
@@ -100,16 +120,20 @@ streams:
       )
 
   business_days:
+    auto_subscribe: true
     query: SELECT * FROM business_days WHERE account_id = auth.user_id()
 
   # --- Open tabs (customer credit) ------------------------------------
   customers:
+    auto_subscribe: true
     query: SELECT * FROM customers WHERE account_id = auth.user_id()
 
   customer_payments:
+    auto_subscribe: true
     query: SELECT * FROM customer_payments WHERE account_id = auth.user_id()
 
   customer_payment_allocations:
+    auto_subscribe: true
     query: |
       SELECT * FROM customer_payment_allocations
       WHERE payment_id IN (
@@ -120,6 +144,7 @@ streams:
   # PK is account_id, aliased to id — same explicit-column rule as
   # stock_levels above.
   account_settings:
+    auto_subscribe: true
     query: |
       SELECT
         account_id as id,
@@ -135,6 +160,7 @@ streams:
       WHERE account_id = auth.user_id()
 
   payment_types:
+    auto_subscribe: true
     query: SELECT * FROM payment_types WHERE account_id = auth.user_id()
 
 # Required, and must be 3: edition 2 is the alpha syntax and the
