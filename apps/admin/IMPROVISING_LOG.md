@@ -160,3 +160,12 @@ Device activation ran `SELECT * FROM pos_devices ORDER BY created_at`, but `crea
 The damaging part is how it failed. `useQuery` surfaces an error as *no rows*, so activation concluded the account had no device and offered to create one — which is why the till kept asking for a name that had already been given in the back office, and why it looked like a sync-timing problem. Two separate fixes went past it before the error was ever surfaced on screen; printing `error.message` in the failure state is what finally named it in one step.
 
 Worth remembering as a class of bug: a PowerSync query against a column missing from `AppSchema` doesn't announce itself, it just returns nothing, and every caller then takes its empty-state branch. Grepping the app's queries against the schema found `pos_devices` was the only one affected — everything else orders by `name` or by a column that does exist.
+
+### A single rejected write bricked the whole till
+An earlier duplicate `pos_devices` insert (fallout from the missing-`created_at` bug above) sat at the head of the local CRUD queue, retrying forever against `pos_devices_one_per_account` and getting 409 every time.
+
+The damage went far beyond that one row. **PowerSync holds back applying downloaded data while local changes are pending**, so nothing new was applied either — the POS showed "No active staff yet" with an employee plainly visible in the back office, and would have shown an empty menu too. A jammed upload reads as total data loss, with the real cause buried in a repeating console error.
+
+`uploadData` now distinguishes rejections that can never succeed from ones worth retrying. Postgres integrity violations (SQLSTATE `23xxx` — unique, foreign key, check) are deterministic: the same write fails identically every time. Those are discarded, loudly, so the queue keeps moving. Everything else — transport failures, 5xx, and notably 401s, where the token merely needs refreshing — still retries and is never dropped.
+
+Discarding a write is not something to do casually, and it's only correct here because the alternative is worse: one permanently-invalid row otherwise stops every subsequent order from ever uploading, and stops all downloads with it.
