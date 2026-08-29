@@ -1,18 +1,18 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { toast } from "sonner"
 import { usePowerSync, useQuery, useStatus } from "@powersync/react"
 import {
   ArrowRightIcon,
+  BanknoteIcon,
   BookUserIcon,
   CreditCardIcon,
   ClipboardListIcon,
   CupSodaIcon,
   LockIcon,
-  LogOutIcon,
   MinusIcon,
+  MoonIcon,
   PlusIcon,
   PrinterIcon,
   ReceiptTextIcon,
@@ -22,38 +22,62 @@ import {
   SmartphoneIcon,
   TagIcon,
   Trash2Icon,
+  UserRoundIcon,
   WalletIcon,
   WifiOffIcon,
 } from "lucide-react"
 
-import { createClient } from "@lenzro/supabase/client"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/lib/currency"
 import { notifyError } from "@/lib/errors"
 import { printTicket } from "@/lib/print-ticket"
 import { computeDiscountAmount } from "@/lib/discounts"
-import { getDeviceId, getShiftSession, isLocked, setLocked } from "@/lib/pos-session"
+import { useAccountSettings, usePaymentTypes } from "@/lib/use-settings"
+import { getOpenBusinessDay } from "@/lib/business-day"
+import {
+  getDeviceId,
+  getShiftSession,
+  getStaffSession,
+  isLocked,
+  clearShiftSession,
+  clearStaffSession,
+  setLocked,
+  subscribeSession,
+} from "@/lib/pos-session"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { VariantPickerDialog } from "@/components/variant-picker-dialog"
 import { DeviceSetup } from "@/components/device-setup"
+import { StaffSignIn } from "@/components/staff-sign-in"
 import { ShiftStart } from "@/components/shift-start"
 import { LockScreen } from "@/components/lock-screen"
 import { LogExpenseDialog } from "@/components/log-expense-dialog"
 import { ShiftCloseDialog } from "@/components/shift-close-dialog"
+import { EndDayDialog } from "@/components/end-day-dialog"
 import { CustomerField } from "@/components/customer-field"
 import { DiscountPickerDialog } from "@/components/discount-picker-dialog"
 import { TicketsView } from "@/components/tickets-view"
 import { ExpensesView } from "@/components/expenses-view"
 import { CustomersView } from "@/components/customers-view"
 
-const PAYMENT_METHODS = [
-  { id: "cash", label: "Cash", icon: WalletIcon },
-  { id: "card", label: "Card", icon: CreditCardIcon },
-  { id: "mobile", label: "Mobile", icon: SmartphoneIcon },
-]
+// Which icon a payment type gets on the till. The owner picks the `kind`
+// in Settings > Payment types; anything custom falls back to a banknote.
+const PAYMENT_ICONS = {
+  cash: WalletIcon,
+  card: CreditCardIcon,
+  mobile: SmartphoneIcon,
+  other: BanknoteIcon,
+}
 
 const ORDER_TYPES = [
   { id: "dine_in", label: "Dine In" },
@@ -100,6 +124,7 @@ function assembleItems(rawItems, rawVariants, rawValues, rawStock) {
       ...item,
       price: Number(item.price),
       item_variants: variantsByItem.get(item.id) ?? [],
+      stockQuantity: stock ? Number(stock.quantity) : null,
       isLowStock,
       isOutOfStock,
     };
@@ -107,47 +132,80 @@ function assembleItems(rawItems, rawVariants, rawValues, rawStock) {
 }
 
 export default function Page() {
-  const router = useRouter()
   const powersync = usePowerSync()
   const status = useStatus()
-  const [supabase] = useState(() => createClient())
 
-  // Device activation / shift / lock state — all local to this browser
-  // install, read once on mount (localStorage isn't available during SSR).
-  const [ready, setReady] = useState(false)
-  const [deviceId, setDeviceIdState] = useState(null)
-  const [shiftSession, setShiftSessionState] = useState(null)
-  const [locked, setLockedState] = useState(false)
+  // Device activation / staff / shift / lock state — all local to this
+  // browser install. Subscribed to rather than copied into state on
+  // mount: localStorage isn't readable during SSR, and several other
+  // components write to it (sign-in, shift start, shift close), so every
+  // reader has to see those writes. The `null` server snapshots are what
+  // make the first paint match the server's.
+  const deviceId = useSyncExternalStore(subscribeSession, getDeviceId, () => null)
+  const staffSession = useSyncExternalStore(subscribeSession, getStaffSession, () => null)
+  const shiftSession = useSyncExternalStore(subscribeSession, getShiftSession, () => null)
+  const locked = useSyncExternalStore(subscribeSession, isLocked, () => false)
+
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false)
   const [closeDialogOpen, setCloseDialogOpen] = useState(false)
+  const [endDayDialogOpen, setEndDayDialogOpen] = useState(false)
+  const [openBusinessDay, setOpenBusinessDay] = useState(null)
   const [activeView, setActiveView] = useState("order")
 
+  const { settings } = useAccountSettings()
+  const { paymentTypes } = usePaymentTypes()
+  const shiftsEnabled = settings.shifts_enabled
+
+  // The stored shift can point at a row that no longer exists (the sales
+  // data was reset, or the shift was closed from another install). Treat
+  // a vanished or closed shift as no shift rather than trusting
+  // localStorage — but only once we've actually synced, or a cold start
+  // would throw away a perfectly good shift before its row arrives.
+  const { data: openShiftRows } = useQuery(
+    "SELECT * FROM shifts WHERE id = ? AND status = 'open'",
+    [shiftSession?.shiftId ?? ""]
+  )
+  const shiftIsLive = Boolean(
+    shiftSession && (!status.hasSynced || openShiftRows?.length > 0)
+  )
+  const activeShift = shiftIsLive ? shiftSession : null
+
   useEffect(() => {
-    setDeviceIdState(getDeviceId())
-    setShiftSessionState(getShiftSession())
-    setLockedState(isLocked())
-    setReady(true)
-  }, [])
+    if (!deviceId) return;
+    let active = true
+    getOpenBusinessDay(powersync, deviceId)
+      .then((day) => active && setOpenBusinessDay(day ?? null))
+      .catch(() => {})
+    return () => {
+      active = false
+    };
+    // Re-checked whenever the shift changes: opening the first shift of
+    // the day is what opens the day, and ending the day closes it.
+  }, [powersync, deviceId, activeShift?.shiftId, endDayDialogOpen])
 
   const { data: activeEmployeeRows } = useQuery(
     "SELECT pos_pin FROM employees WHERE id = ?",
-    [shiftSession?.employeeId ?? ""]
+    [staffSession?.employeeId ?? ""]
   )
   const canLock = Boolean(activeEmployeeRows?.[0]?.pos_pin)
 
-  function handleLock() {
-    setLocked(true)
-    setLockedState(true)
-  }
-
-  function handleUnlock() {
-    setLocked(false)
-    setLockedState(false)
-  }
-
   function handleShiftClosed() {
-    setShiftSessionState(null)
+    clearShiftSession()
     setCloseDialogOpen(false)
+  }
+
+  // Handing the till to the next person. This is not a Supabase sign-out:
+  // the device stays activated and nobody types an email address. A full
+  // sign-out lives on the sign-in screen, blocked while a shift is open.
+  function handleSignOutStaff() {
+    if (activeShift) {
+      toast.error("Close your shift first", {
+        description: "The drawer still needs counting before you hand over.",
+      })
+      return
+    }
+    clearStaffSession()
+    setActiveView("order")
   }
 
   const { data: categories } = useQuery("SELECT * FROM categories WHERE active = 1 ORDER BY name")
@@ -183,7 +241,7 @@ export default function Page() {
 
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [cart, setCart] = useState([])
-  const [paymentMethod, setPaymentMethod] = useState("cash")
+  const [paymentTypeId, setPaymentTypeId] = useState(null)
   const [checkingOut, setCheckingOut] = useState(false)
   const [variantItem, setVariantItem] = useState(null)
   const [search, setSearch] = useState("")
@@ -192,10 +250,17 @@ export default function Page() {
   const [customerName, setCustomerName] = useState("")
   const [discountType, setDiscountType] = useState(null)
   // Only meaningful once a real customer (not a walk-in) is selected —
-  // "add to tab" replaces whatever cash/card/mobile is chosen below.
+  // "add to tab" replaces whatever payment type is chosen below.
   const [payNow, setPayNow] = useState(true)
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false)
   const [orderResetKey, setOrderResetKey] = useState(0)
+  const [stockWarningItem, setStockWarningItem] = useState(null)
+
+  // Derived rather than defaulted in an effect: the first payment type is
+  // the selected one until the cashier taps another, so the buttons work
+  // the moment they sync down.
+  const selectedPaymentType =
+    paymentTypes.find((t) => t.id === paymentTypeId) ?? paymentTypes[0] ?? null
 
   const visibleItems = useMemo(() => {
     const byCategory =
@@ -229,6 +294,17 @@ export default function Page() {
     })
   }
 
+  // Selling past zero is allowed — the queue keeps moving and the count
+  // gets fixed later — but the cashier is asked to confirm so it's a
+  // decision, not an accident. Only when the owner turned the alert on.
+  function requestAdd(item, extra = {}) {
+    if (settings.negative_stock_alerts_enabled && item.isOutOfStock) {
+      setStockWarningItem({ item, extra })
+      return
+    }
+    addLine(item, extra)
+  }
+
   function setQuantity(key, quantity) {
     setCart((prev) =>
       quantity <= 0
@@ -245,39 +321,44 @@ export default function Page() {
     return cart.find((line) => line.key === cartKey(itemId, null))?.quantity ?? 0
   }
 
-  function decrementItem(item) {
-    const key = cartKey(item.id, null)
-    const current = getSimpleQuantity(item.id)
-    setQuantity(key, current - 1)
-  }
-
   const subtotal = cart.reduce((sum, line) => sum + line.unit_price * line.quantity, 0)
   const tax = 0
   const discountAmount = computeDiscountAmount(discountType, cart, subtotal)
   const total = subtotal - discountAmount + tax
   const totalCount = cart.reduce((sum, line) => sum + line.quantity, 0)
-  const effectivePaymentMethod = customerId && !payNow ? "tab" : paymentMethod
+  const onTab = Boolean(customerId) && !payNow
+  // Stored as the label the owner configured ("M-Pesa"), so receipts and
+  // reports read correctly without a join. 'tab' stays reserved.
+  const effectivePaymentMethod = onTab ? "tab" : (selectedPaymentType?.name ?? "cash")
 
   // Writes go to the local SQLite database first (near-instant, works
   // offline) — PowerSyncProvider's BackendConnector uploads them to
   // Supabase in the background whenever connectivity is available.
   async function handleCheckout() {
+    if (!onTab && !selectedPaymentType) {
+      toast.error("No payment types set up", {
+        description: "Add one in the back office under Settings > Payment types.",
+      })
+      return
+    }
+
     setCheckingOut(true)
     const orderId = crypto.randomUUID()
 
     try {
       await powersync.execute(
         `INSERT INTO orders
-           (id, subtotal, tax, total, payment_method, shift_id, created_at,
+           (id, subtotal, tax, total, payment_method, payment_type_id, shift_id, created_at,
             discount_type_id, discount_amount, customer_id, customer_name, order_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           subtotal,
           tax,
           total,
           effectivePaymentMethod,
-          shiftSession.shiftId,
+          onTab ? null : (selectedPaymentType?.id ?? null),
+          activeShift?.shiftId ?? null,
           new Date().toISOString(),
           discountType?.id ?? null,
           discountAmount,
@@ -344,39 +425,35 @@ export default function Page() {
       variant_label: line.variant_label,
       line_total: line.unit_price * line.quantity,
     }))
-    printTicket(previewOrder, previewItems, shiftSession.employeeName)
+    printTicket(previewOrder, previewItems, staffSession.employeeName)
   }
-
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    router.push("/auth")
-    router.refresh()
-  }
-
-  if (!ready) return null
 
   if (!deviceId) {
-    return <DeviceSetup onActivated={(id) => setDeviceIdState(id)} />;
+    return <DeviceSetup />;
   }
 
-  if (!shiftSession) {
-    return (
-      <ShiftStart
-        deviceId={deviceId}
-        onStarted={(session) => setShiftSessionState(session)}
-      />
-    );
+  // The PIN screen is the daily front door, whether or not shifts are on.
+  if (!staffSession) {
+    return <StaffSignIn hasOpenShift={Boolean(activeShift)} />;
   }
 
   if (locked) {
     return (
       <LockScreen
-        employeeId={shiftSession.employeeId}
-        employeeName={shiftSession.employeeName}
-        onUnlock={handleUnlock}
+        employeeId={staffSession.employeeId}
+        employeeName={staffSession.employeeName}
+        onUnlock={() => setLocked(false)}
       />
     );
   }
+
+  // Only stands between the cashier and selling when the owner has Shifts
+  // switched on — that's the toggle in Settings > Features doing its job.
+  if (shiftsEnabled && !activeShift) {
+    return <ShiftStart deviceId={deviceId} staff={staffSession} onBack={handleSignOutStaff} />;
+  }
+
+  const showLowStockBadges = settings.low_stock_alerts_enabled
 
   return (
     <div className="flex h-svh flex-col overflow-hidden">
@@ -391,7 +468,7 @@ export default function Page() {
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">{shiftSession.employeeName}</p>
+          <p className="text-xs text-muted-foreground">{staffSession.employeeName}</p>
         </div>
 
         <div className="order-3 flex w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1 sm:order-0 sm:w-auto sm:overflow-visible">
@@ -417,17 +494,19 @@ export default function Page() {
             <ClipboardListIcon className="size-4" />
             Tickets
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("expenses")}
-            className={cn(
-              "flex h-11 shrink-0 items-center gap-1.5 rounded-md px-4 text-sm font-medium sm:text-base",
-              activeView === "expenses" ? "bg-background shadow-sm" : "text-muted-foreground"
-            )}
-          >
-            <ReceiptTextIcon className="size-4" />
-            Expenses
-          </button>
+          {shiftsEnabled && (
+            <button
+              type="button"
+              onClick={() => setActiveView("expenses")}
+              className={cn(
+                "flex h-11 shrink-0 items-center gap-1.5 rounded-md px-4 text-sm font-medium sm:text-base",
+                activeView === "expenses" ? "bg-background shadow-sm" : "text-muted-foreground"
+              )}
+            >
+              <ReceiptTextIcon className="size-4" />
+              Expenses
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setActiveView("customers")}
@@ -442,29 +521,49 @@ export default function Page() {
         </div>
 
         <div className="flex items-center gap-1.5">
-          <Button
-            variant="outline"
-            className="size"
-            onClick={() => setExpenseDialogOpen(true)}
-            title="Log expense"
-          >
-            <ReceiptTextIcon className="size-5" />
-            <p className="text-sm sm:text-lg">Expense</p>
-          </Button>
+          {shiftsEnabled && (
+            <Button
+              variant="outline"
+              className="size"
+              onClick={() => setExpenseDialogOpen(true)}
+              title="Log expense"
+            >
+              <ReceiptTextIcon className="size-5" />
+              <p className="text-sm sm:text-lg">Expense</p>
+            </Button>
+          )}
           {canLock && (
-            <Button variant="" className="size-11" onClick={handleLock} title="Lock screen">
+            <Button variant="" className="size-11" onClick={() => setLocked(true)} title="Lock screen">
               <LockIcon className="size-5" />
             </Button>
           )}
+          {shiftsEnabled && (
+            <Button
+              variant="outline"
+              className="h-11 px-3 text-sm sm:px-4 sm:text-lg"
+              onClick={() => setCloseDialogOpen(true)}
+            >
+              End shift
+            </Button>
+          )}
+          {shiftsEnabled && openBusinessDay && (
+            <Button
+              variant="outline"
+              className="h-11 gap-2 px-3 text-sm sm:px-4"
+              onClick={() => setEndDayDialogOpen(true)}
+              title="End business day"
+            >
+              <MoonIcon className="size-5" />
+              <span className="hidden lg:inline">End day</span>
+            </Button>
+          )}
           <Button
-            variant="outline"
-            className="h-11 px-3 text-sm sm:px-4 sm:text-lg"
-            onClick={() => setCloseDialogOpen(true)}
+            variant="ghost"
+            className="size-11"
+            onClick={handleSignOutStaff}
+            title="Hand over the till"
           >
-            End shift
-          </Button>
-          <Button variant="ghost" className="size-11" onClick={handleLogout} title="Log out">
-            <LogOutIcon className="size-5" />
+            <UserRoundIcon className="size-5" />
           </Button>
         </div>
       </header>
@@ -472,22 +571,22 @@ export default function Page() {
       {activeView === "tickets" && (
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <TicketsView
-            shiftId={shiftSession.shiftId}
+            shiftId={activeShift?.shiftId ?? null}
             deviceId={deviceId}
-            employeeName={shiftSession.employeeName}
+            employeeName={staffSession.employeeName}
           />
         </div>
       )}
 
-      {activeView === "expenses" && (
+      {activeView === "expenses" && shiftsEnabled && (
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <ExpensesView shiftId={shiftSession.shiftId} />
+          <ExpensesView shiftId={activeShift?.shiftId ?? null} />
         </div>
       )}
 
       {activeView === "customers" && (
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <CustomersView employeeId={shiftSession.employeeId} />
+          <CustomersView employeeId={staffSession.employeeId} />
         </div>
       )}
 
@@ -532,7 +631,7 @@ export default function Page() {
             </button>
             {(categories ?? []).map((cat) => {
               const isSelected = categoryFilter === cat.id
-              const needsRestock = categoriesWithLowStock.has(cat.id)
+              const needsRestock = showLowStockBadges && categoriesWithLowStock.has(cat.id)
               return (
                 <button
                   key={cat.id}
@@ -599,6 +698,7 @@ export default function Page() {
               {visibleItems.map((item) => {
                 const hasVariants = item.item_variants?.length > 0
                 const quantity = hasVariants ? 0 : getSimpleQuantity(item.id)
+                const showStockFlag = showLowStockBadges && (item.isOutOfStock || item.isLowStock)
 
                 return (
                   <Card key={item.id} className="gap-3 rounded-2xl border-emerald-600/40 p-3 dark:border-emerald-500/30">
@@ -610,7 +710,7 @@ export default function Page() {
                         ) : (
                           <CupSodaIcon className="size-8 text-emerald-600/60" />
                         )}
-                        {(item.isOutOfStock || item.isLowStock) && (
+                        {showStockFlag && (
                           <span
                             className={cn(
                               "absolute top-1.5 left-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium",
@@ -629,35 +729,19 @@ export default function Page() {
                         )}
                       </div>
 
-                      {hasVariants ? (
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{item.name}</p>
-                            <p className="text-sm text-muted-foreground">{formatCurrency(item.price)}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setVariantItem(item)}
-                            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-emerald-600 text-emerald-700 dark:text-emerald-400"
-                          >
-                            <PlusIcon className="size-4" />
-                          </button>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{item.name}</p>
+                          <p className="text-sm text-muted-foreground">{formatCurrency(item.price)}</p>
                         </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{item.name}</p>
-                            <p className="text-sm text-muted-foreground">{formatCurrency(item.price)}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => addLine(item)}
-                            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-emerald-600 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
-                          >
-                            <PlusIcon className="size-4" />
-                          </button>
-                        </div>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => (hasVariants ? setVariantItem(item) : requestAdd(item))}
+                          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-emerald-600 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                        >
+                          <PlusIcon className="size-4" />
+                        </button>
+                      </div>
                     </CardContent>
                   </Card>
                 );
@@ -705,7 +789,7 @@ export default function Page() {
               key={orderResetKey}
               customerId={customerId}
               customerName={customerName}
-              employeeId={shiftSession.employeeId}
+              employeeId={staffSession.employeeId}
               onChange={({ customerId: id, customerName: name }) => {
                 setCustomerId(id)
                 setCustomerName(name)
@@ -833,26 +917,42 @@ export default function Page() {
               </div>
             )}
 
-            <div
-              className={cn("grid grid-cols-3 gap-2", customerId && !payNow && "pointer-events-none opacity-40")}
-            >
-              {PAYMENT_METHODS.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setPaymentMethod(id)}
-                  className={cn(
-                    "flex flex-col items-center gap-1 rounded-xl border py-2.5 text-xs font-medium",
-                    paymentMethod === id
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
-                      : "border-border text-muted-foreground hover:bg-muted"
-                  )}
-                >
-                  <Icon className="size-4" />
-                  {label}
-                </button>
-              ))}
-            </div>
+            {/* The owner's own payment types, in the order they arranged
+                them — not a hardcoded cash/card/mobile row any more. */}
+            {paymentTypes.length === 0 ? (
+              <p className="rounded-xl bg-muted p-3 text-xs text-muted-foreground">
+                No payment types set up yet. Add them in the back office under Settings &gt; Payment
+                types.
+              </p>
+            ) : (
+              <div
+                className={cn(
+                  "grid gap-2",
+                  paymentTypes.length > 3 ? "grid-cols-4" : "grid-cols-3",
+                  onTab && "pointer-events-none opacity-40"
+                )}
+              >
+                {paymentTypes.map((type) => {
+                  const Icon = PAYMENT_ICONS[type.kind] ?? BanknoteIcon
+                  return (
+                    <button
+                      key={type.id}
+                      type="button"
+                      onClick={() => setPaymentTypeId(type.id)}
+                      className={cn(
+                        "flex flex-col items-center gap-1 rounded-xl border py-2.5 text-xs font-medium",
+                        selectedPaymentType?.id === type.id
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
+                          : "border-border text-muted-foreground hover:bg-muted"
+                      )}
+                    >
+                      <Icon className="size-4" />
+                      <span className="max-w-full truncate px-1">{type.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="flex gap-2">
               <Button
@@ -886,23 +986,70 @@ export default function Page() {
         open={!!variantItem}
         onOpenChange={(open) => !open && setVariantItem(null)}
         onConfirm={(extra) => {
-          addLine(variantItem, extra)
+          requestAdd(variantItem, extra)
           setVariantItem(null)
         }}
       />
 
-      <LogExpenseDialog
-        shiftId={shiftSession.shiftId}
-        open={expenseDialogOpen}
-        onOpenChange={setExpenseDialogOpen}
-      />
+      <Dialog
+        open={Boolean(stockWarningItem)}
+        onOpenChange={(open) => !open && setStockWarningItem(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{stockWarningItem?.item.name} is out of stock</DialogTitle>
+            <DialogDescription>
+              Inventory says there are none left. You can still sell it — the count just needs
+              fixing in the back office.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setStockWarningItem(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-600/90"
+              onClick={() => {
+                addLine(stockWarningItem.item, stockWarningItem.extra)
+                setStockWarningItem(null)
+              }}
+            >
+              Sell anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <ShiftCloseDialog
-        shiftId={shiftSession.shiftId}
-        open={closeDialogOpen}
-        onOpenChange={setCloseDialogOpen}
-        onClosed={handleShiftClosed}
-      />
+      {shiftsEnabled && activeShift && (
+        <>
+          <LogExpenseDialog
+            shiftId={activeShift.shiftId}
+            open={expenseDialogOpen}
+            onOpenChange={setExpenseDialogOpen}
+          />
+
+          <ShiftCloseDialog
+            shiftId={activeShift.shiftId}
+            open={closeDialogOpen}
+            onOpenChange={setCloseDialogOpen}
+            onClosed={handleShiftClosed}
+          />
+        </>
+      )}
+
+      {shiftsEnabled && openBusinessDay && (
+        <EndDayDialog
+          businessDay={openBusinessDay}
+          employeeId={staffSession.employeeId}
+          employeeName={staffSession.employeeName}
+          open={endDayDialogOpen}
+          onOpenChange={setEndDayDialogOpen}
+          onClosed={() => {
+            setEndDayDialogOpen(false)
+            setOpenBusinessDay(null)
+          }}
+        />
+      )}
 
       <DiscountPickerDialog
         open={discountDialogOpen}

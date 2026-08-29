@@ -53,6 +53,11 @@ export function TicketsView({ shiftId, deviceId, employeeName }) {
   const [openOrderId, setOpenOrderId] = useState(null)
   const [selectedShiftId, setSelectedShiftId] = useState(shiftId)
 
+  // With Shifts turned off in Settings > Features there are no shifts to
+  // group by, so tickets fall back to today's orders — the cashier still
+  // needs to find the sale they just rang up.
+  const shiftless = !shiftId
+
   const { data: recentShifts } = useQuery(
     `SELECT * FROM shifts WHERE pos_device_id = ?
      ORDER BY opened_at DESC LIMIT 15`,
@@ -63,14 +68,21 @@ export function TicketsView({ shiftId, deviceId, employeeName }) {
   const isCurrent = selectedShiftId === shiftId
 
   const { data: orders, isLoading: ordersLoading } = useQuery(
-    "SELECT * FROM orders WHERE shift_id = ? ORDER BY created_at DESC",
-    [selectedShiftId]
+    shiftless
+      ? `SELECT * FROM orders WHERE date(created_at) = date('now', 'localtime')
+         ORDER BY created_at DESC`
+      : "SELECT * FROM orders WHERE shift_id = ? ORDER BY created_at DESC",
+    shiftless ? [] : [selectedShiftId]
   )
   const { data: allItems } = useQuery(
-    `SELECT order_items.* FROM order_items
-     INNER JOIN orders ON orders.id = order_items.order_id
-     WHERE orders.shift_id = ?`,
-    [selectedShiftId]
+    shiftless
+      ? `SELECT order_items.* FROM order_items
+         INNER JOIN orders ON orders.id = order_items.order_id
+         WHERE date(orders.created_at) = date('now', 'localtime')`
+      : `SELECT order_items.* FROM order_items
+         INNER JOIN orders ON orders.id = order_items.order_id
+         WHERE orders.shift_id = ?`,
+    shiftless ? [] : [selectedShiftId]
   )
 
   const itemsByOrder = useMemo(() => {
@@ -89,9 +101,14 @@ export function TicketsView({ shiftId, deviceId, employeeName }) {
         <div>
           <h2 className="text-xl font-semibold lg:text-2xl">Tickets</h2>
           <p className="text-sm text-muted-foreground lg:text-base">
-            {isCurrent ? "Orders rung up this shift" : "Reviewing a past shift"}
+            {shiftless
+              ? "Orders rung up today"
+              : isCurrent
+                ? "Orders rung up this shift"
+                : "Reviewing a past shift"}
           </p>
         </div>
+        {!shiftless && (
         <Select value={selectedShiftId} onValueChange={setSelectedShiftId}>
           <SelectTrigger className="h-11 w-56 text-sm">
             <SelectValue>
@@ -109,6 +126,7 @@ export function TicketsView({ shiftId, deviceId, employeeName }) {
             ))}
           </SelectContent>
         </Select>
+        )}
       </div>
 
       {viewingShift && !isCurrent && viewingShift.status === "closed" && (
@@ -153,7 +171,7 @@ export function TicketsView({ shiftId, deviceId, employeeName }) {
 
       {!ordersLoading && orders?.length === 0 && (
         <p className="py-16 text-center text-base text-muted-foreground">
-          No orders on this shift.
+          {shiftless ? "No orders yet today." : "No orders on this shift."}
         </p>
       )}
 

@@ -1,30 +1,29 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { usePowerSync, useQuery } from "@powersync/react"
-import { ArrowLeftIcon } from "lucide-react"
-import { toast } from "sonner"
+import { ArrowLeftIcon, SunriseIcon } from "lucide-react"
 
 import { formatCurrency } from "@/lib/currency"
 import { notifyError } from "@/lib/errors"
 import { setShiftSession } from "@/lib/pos-session"
-import { avatarColorFor } from "@/lib/employees"
+import { ensureBusinessDayOpen, getOpenBusinessDay } from "@/lib/business-day"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { PinPad } from "@/components/pin-pad"
 
-export function ShiftStart({ deviceId, onStarted }) {
+// Opening the drawer for a shift. Who you are was already settled at the
+// PIN screen (StaffSignIn) — this step is only about money, and only
+// happens at all when the owner has Shifts turned on in Settings.
+//
+// The business day opens implicitly here: the first shift of the day
+// starts one. Making someone tap "start the day" before "start my shift"
+// is two screens for a single intention.
+export function ShiftStart({ deviceId, staff, onBack }) {
   const powersync = usePowerSync()
-  const [step, setStep] = useState("pick-employee")
-  const [selected, setSelected] = useState(null)
-  const [pin, setPin] = useState("")
-  const [pinError, setPinError] = useState(false)
-  const [openingFloat, setOpeningFloat] = useState("0")
+  const [typedFloat, setTypedFloat] = useState(null)
   const [busy, setBusy] = useState(false)
-
-  const { data: employees } = useQuery(
-    "SELECT * FROM employees WHERE status = 'active' ORDER BY (role = 'Owner') DESC, full_name"
-  )
+  const [openDay, setOpenDay] = useState(null)
+  const [dayChecked, setDayChecked] = useState(false)
 
   const { data: lastClosedShift } = useQuery(
     `SELECT closing_cash_counted FROM shifts
@@ -33,56 +32,49 @@ export function ShiftStart({ deviceId, onStarted }) {
     [deviceId]
   )
 
+  // Defaults to whatever the last shift left in the drawer — the usual
+  // case is that nobody emptied it overnight. Derived rather than pushed
+  // into state by an effect, so the carried-over amount can arrive late
+  // (it's a synced query) without clobbering something already typed.
+  const carried = lastClosedShift?.[0]?.closing_cash_counted
+  const openingFloat = typedFloat ?? (carried != null ? String(carried) : "")
+  const setOpeningFloat = setTypedFloat
+
   useEffect(() => {
-    if (step === "float") {
-      setOpeningFloat(String(lastClosedShift?.[0]?.closing_cash_counted ?? 0))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step])
-
-  function pickEmployee(employee) {
-    setSelected(employee)
-    setPin("")
-    setPinError(false)
-
-    if (!employee.pos_pin_enabled) {
-      setStep("float")
-      return
-    }
-    if (!employee.pos_pin) {
-      toast.error("No PIN set for this employee", {
-        description: "Ask the owner to assign one from the back office.",
+    let active = true
+    getOpenBusinessDay(powersync, deviceId)
+      .then((day) => {
+        if (!active) return
+        setOpenDay(day ?? null)
+        setDayChecked(true)
       })
-      return
-    }
-    setStep("pin")
-  }
-
-  function handlePinChange(next) {
-    setPin(next)
-    if (next.length < 4) return
-    if (next === selected.pos_pin) {
-      setStep("float")
-    } else {
-      setPinError(true)
-      setTimeout(() => {
-        setPin("")
-        setPinError(false)
-      }, 400)
-    }
-  }
+      .catch(() => active && setDayChecked(true))
+    return () => {
+      active = false
+    };
+  }, [powersync, deviceId])
 
   async function confirmStart() {
     setBusy(true)
     try {
+      const businessDayId = await ensureBusinessDayOpen(powersync, deviceId, staff.employeeId)
       const shiftId = crypto.randomUUID()
       await powersync.execute(
-        `INSERT INTO shifts (id, employee_id, pos_device_id, opened_at, opening_float, expenses_total, status)
-         VALUES (?, ?, ?, ?, ?, 0, 'open')`,
-        [shiftId, selected.id, deviceId, new Date().toISOString(), Number(openingFloat) || 0]
+        `INSERT INTO shifts
+           (id, employee_id, pos_device_id, opened_at, opening_float, expenses_total, status, business_day_id)
+         VALUES (?, ?, ?, ?, ?, 0, 'open', ?)`,
+        [
+          shiftId,
+          staff.employeeId,
+          deviceId,
+          new Date().toISOString(),
+          Number(openingFloat) || 0,
+          businessDayId,
+        ]
       )
-      setShiftSession({ shiftId, employeeId: selected.id, employeeName: selected.full_name })
-      onStarted({ shiftId, employeeId: selected.id, employeeName: selected.full_name })
+      // page.jsx subscribes to the session store; writing it is what
+      // moves the app on to the sales screen.
+      setShiftSession({ shiftId, businessDayId })
     } catch (error) {
       notifyError(error, "Couldn't start the shift")
     } finally {
@@ -90,92 +82,55 @@ export function ShiftStart({ deviceId, onStarted }) {
     }
   }
 
-  const activeEmployees = useMemo(() => employees ?? [], [employees])
-
-  if (step === "pin") {
-    return (
-      <div className="flex h-svh flex-col items-center justify-center gap-8 p-6">
-        <button
-          type="button"
-          onClick={() => setStep("pick-employee")}
-          className="absolute top-6 left-6 flex items-center gap-1.5 text-sm text-muted-foreground"
-        >
-          <ArrowLeftIcon className="size-4" />
-          Back
-        </button>
-        <div className="text-center">
-          <h1 className="text-lg font-semibold">Hi, {selected.full_name.split(" ")[0]}</h1>
-          <p className={`text-sm ${pinError ? "text-destructive" : "text-muted-foreground"}`}>
-            {pinError ? "Wrong PIN, try again" : "Enter your PIN"}
-          </p>
-        </div>
-        <PinPad value={pin} onChange={handlePinChange} />
-      </div>
-    );
-  }
-
-  if (step === "float") {
-    return (
-      <div className="flex h-svh flex-col items-center justify-center gap-6 p-6">
-        <button
-          type="button"
-          onClick={() => setStep("pick-employee")}
-          className="absolute top-6 left-6 flex items-center gap-1.5 text-sm text-muted-foreground"
-        >
-          <ArrowLeftIcon className="size-4" />
-          Back
-        </button>
-        <div className="w-full max-w-xs space-y-6 text-center">
-          <div>
-            <h1 className="text-lg font-semibold">Starting cash</h1>
-            <p className="text-sm text-muted-foreground">
-              How much is in the drawer right now, {selected.full_name.split(" ")[0]}?
-            </p>
-          </div>
-          <div className="space-y-1.5 text-left">
-            <label className="text-xs font-medium text-muted-foreground">Opening float</label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              value={openingFloat}
-              onChange={(e) => setOpeningFloat(e.target.value)}
-              className="h-12 text-center text-lg"
-            />
-          </div>
-          <Button
-            className="h-12 w-full bg-emerald-600 hover:bg-emerald-600/90"
-            disabled={busy}
-            onClick={confirmStart}
-          >
-            {busy ? "Starting…" : `Start shift with ${formatCurrency(Number(openingFloat) || 0)}`}
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const isNewDay = dayChecked && !openDay
 
   return (
-    <div className="flex h-svh flex-col items-center justify-center gap-8 p-6">
-      <div className="text-center">
-        <h1 className="text-lg font-semibold">Who&apos;s working?</h1>
-        <p className="text-sm text-muted-foreground">Tap your name to start a shift</p>
-      </div>
-      <div className="grid w-full max-w-md grid-cols-2 gap-3 sm:grid-cols-3">
-        {activeEmployees.map((employee) => (
-          <button
-            key={employee.id}
-            type="button"
-            onClick={() => pickEmployee(employee)}
-            className="flex flex-col items-center gap-2 rounded-xl border border-border p-4 hover:bg-muted"
-          >
-            <div
-              className={`flex size-12 items-center justify-center rounded-full text-lg font-semibold text-white ${avatarColorFor(employee.id)}`}
-            >
-              {employee.full_name.charAt(0)}
-            </div>
-            <span className="text-sm font-medium">{employee.full_name}</span>
-          </button>
-        ))}
+    <div className="flex h-svh flex-col items-center justify-center gap-6 p-6">
+      <button
+        type="button"
+        onClick={onBack}
+        className="absolute top-6 left-6 flex items-center gap-1.5 text-base text-muted-foreground"
+      >
+        <ArrowLeftIcon className="size-5" />
+        Not you?
+      </button>
+
+      <div className="w-full max-w-sm space-y-6 text-center">
+        {isNewDay && (
+          <div className="flex items-center justify-center gap-2 rounded-xl bg-emerald-50 p-3 text-base text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+            <SunriseIcon className="size-5" />
+            Starting a new business day
+          </div>
+        )}
+
+        <div>
+          <h1 className="text-2xl font-semibold">Starting cash</h1>
+          <p className="text-base text-muted-foreground">
+            How much is in the drawer right now, {staff.employeeName.split(" ")[0]}?
+          </p>
+        </div>
+
+        <div className="space-y-1.5 text-left">
+          <label htmlFor="opening-float" className="text-sm font-medium text-muted-foreground">
+            Opening float
+          </label>
+          <Input
+            id="opening-float"
+            type="number"
+            inputMode="decimal"
+            value={openingFloat}
+            onChange={(e) => setOpeningFloat(e.target.value)}
+            className="h-14 text-center text-2xl"
+          />
+        </div>
+
+        <Button
+          className="h-14 w-full bg-emerald-600 text-base hover:bg-emerald-600/90"
+          disabled={busy}
+          onClick={confirmStart}
+        >
+          {busy ? "Starting…" : `Start shift with ${formatCurrency(Number(openingFloat) || 0)}`}
+        </Button>
       </div>
     </div>
   );

@@ -83,6 +83,10 @@ const orders = new Table({
   customer_id: column.text,
   customer_name: column.text,
   order_type: column.text,
+  // payment_method stays the human-readable label ("M-Pesa") so receipts
+  // and reports read correctly without a join; payment_type_id is what
+  // ties the sale back to the configured type it was taken on.
+  payment_type_id: column.text,
 });
 
 // Admin-defined, cashier-applied at checkout — read-only here.
@@ -159,6 +163,7 @@ const shifts = new Table(
     expected_cash: column.real,
     discrepancy: column.real,
     status: column.text,
+    business_day_id: column.text,
   },
   { indexes: { by_device: ["pos_device_id"] } }
 );
@@ -172,6 +177,49 @@ const shift_expenses = new Table(
   },
   { indexes: { by_shift: ["shift_id"] } }
 );
+
+// A trading day, spanning however many shifts happen between "day begins"
+// and "End business day". Scoped per device, same as shifts. Opened
+// implicitly by the first shift of the day, closed explicitly — the
+// closing totals are snapshotted onto the row so the day's Z-report stays
+// stable even if later data changes.
+const business_days = new Table(
+  {
+    pos_device_id: column.text,
+    opened_at: column.text,
+    closed_at: column.text,
+    opened_by_employee_id: column.text,
+    closed_by_employee_id: column.text,
+    status: column.text,
+    gross_sales: column.real,
+    cash_sales: column.real,
+    non_cash_sales: column.real,
+    tab_sales: column.real,
+    expenses_total: column.real,
+    order_count: column.integer,
+    note: column.text,
+  },
+  { indexes: { by_device: ["pos_device_id"] } }
+);
+
+// The Settings > Features toggles, owned by the admin app and read-only
+// here. One row per account, so the till just takes the first row it has.
+const account_settings = new Table({
+  shifts_enabled: column.integer,
+  open_tickets_enabled: column.integer,
+  low_stock_alerts_enabled: column.integer,
+  negative_stock_alerts_enabled: column.integer,
+});
+
+// The payment buttons at checkout, defined by the owner in Settings >
+// Payment types. Read-only here — this replaced a hardcoded cash/card/
+// mobile array that ignored whatever the owner had configured.
+const payment_types = new Table({
+  name: column.text,
+  kind: column.text,
+  sort_order: column.integer,
+  active: column.integer,
+});
 
 const order_items = new Table(
   {
@@ -199,6 +247,9 @@ export const AppSchema = new Schema({
   pos_devices,
   shifts,
   shift_expenses,
+  business_days,
+  account_settings,
+  payment_types,
   discount_types,
   customers,
   customer_payments,

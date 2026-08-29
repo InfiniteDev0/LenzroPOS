@@ -28,8 +28,17 @@ export function ShiftCloseDialog({ shiftId, open, onOpenChange, onClosed }) {
     "SELECT opening_float, expenses_total FROM shifts WHERE id = ?",
     [shiftId]
   )
+  // "Cash" is whichever payment types the owner marked as cash, not the
+  // literal string — they can rename it or add a second drawer-money type.
+  // The literal 'cash' stays in the check so sales rung up before payment
+  // types were configurable still count toward the drawer.
   const { data: cashRows } = useQuery(
-    "SELECT COALESCE(SUM(total), 0) as cash_total FROM orders WHERE shift_id = ? AND payment_method = 'cash'",
+    `SELECT COALESCE(SUM(total), 0) as cash_total FROM orders
+     WHERE shift_id = ?
+       AND (lower(payment_method) = 'cash'
+            OR lower(payment_method) IN (
+              SELECT lower(name) FROM payment_types WHERE kind = 'cash'
+            ))`,
     [shiftId]
   )
 

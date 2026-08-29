@@ -1,0 +1,124 @@
+# PowerSync Sync Streams — the complete, authoritative config.
+#
+# This file is the source of truth. It is NOT read at runtime: paste the
+# whole file into the PowerSync dashboard (Manage instance > Sync Streams)
+# and deploy. Always paste the WHOLE file, never a fragment — splicing one
+# stream into the deployed config is how it drifted out of sync with
+# apps/pos/src/lib/powersync/AppSchema.js in the first place.
+#
+# Every table here must also exist in AppSchema.js, and vice versa.
+#
+# Two gotchas this config works around:
+#
+#   1. PowerSync requires every synced row to have an `id` column. Two
+#      tables don't have one in Postgres — `stock_levels` (PK is item_id)
+#      and `account_settings` (PK is account_id) — so both alias their PK
+#      to `id`.
+#   2. Once any column in a SELECT is aliased, `table.*` is rejected
+#      ("Invalid unqualified reference"). Those two streams therefore list
+#      every column explicitly. The rest can use the `*` form.
+#
+# Tables without their own `account_id` are scoped by joining to the table
+# that has one, so a device only ever syncs its own account's data.
+
+streams:
+  # --- Menu -----------------------------------------------------------
+  menu_categories:
+    query: SELECT * FROM categories WHERE account_id = auth.user_id()
+
+  menu_items:
+    query: SELECT * FROM items WHERE account_id = auth.user_id()
+
+  menu_item_variants:
+    query: |
+      SELECT item_variants.*
+      FROM item_variants
+      INNER JOIN items ON items.id = item_variants.item_id
+      WHERE items.account_id = auth.user_id()
+
+  menu_item_variant_values:
+    query: |
+      SELECT item_variant_values.*
+      FROM item_variant_values
+      INNER JOIN item_variants ON item_variants.id = item_variant_values.variant_id
+      INNER JOIN items ON items.id = item_variants.item_id
+      WHERE items.account_id = auth.user_id()
+
+  # PK is item_id, so it's aliased to id — which then forces every other
+  # column to be listed explicitly (see gotcha 2 above).
+  stock_levels:
+    query: |
+      SELECT
+        stock_levels.item_id as id,
+        stock_levels.item_id,
+        stock_levels.quantity,
+        stock_levels.low_stock_threshold
+      FROM stock_levels
+      INNER JOIN items ON items.id = stock_levels.item_id
+      WHERE items.account_id = auth.user_id()
+
+  # --- Sales ----------------------------------------------------------
+  orders:
+    query: SELECT * FROM orders WHERE account_id = auth.user_id()
+
+  order_items:
+    query: |
+      SELECT order_items.*
+      FROM order_items
+      INNER JOIN orders ON orders.id = order_items.order_id
+      WHERE orders.account_id = auth.user_id()
+
+  discount_types:
+    query: SELECT * FROM discount_types WHERE account_id = auth.user_id()
+
+  # --- Staff, devices, shifts, trading days ---------------------------
+  employees:
+    query: SELECT * FROM employees WHERE account_id = auth.user_id()
+
+  pos_devices:
+    query: SELECT * FROM pos_devices WHERE account_id = auth.user_id()
+
+  shifts:
+    query: SELECT * FROM shifts WHERE account_id = auth.user_id()
+
+  shift_expenses:
+    query: |
+      SELECT shift_expenses.*
+      FROM shift_expenses
+      INNER JOIN shifts ON shifts.id = shift_expenses.shift_id
+      WHERE shifts.account_id = auth.user_id()
+
+  business_days:
+    query: SELECT * FROM business_days WHERE account_id = auth.user_id()
+
+  # --- Open tabs (customer credit) ------------------------------------
+  customers:
+    query: SELECT * FROM customers WHERE account_id = auth.user_id()
+
+  customer_payments:
+    query: SELECT * FROM customer_payments WHERE account_id = auth.user_id()
+
+  customer_payment_allocations:
+    query: |
+      SELECT customer_payment_allocations.*
+      FROM customer_payment_allocations
+      INNER JOIN customer_payments
+        ON customer_payments.id = customer_payment_allocations.payment_id
+      WHERE customer_payments.account_id = auth.user_id()
+
+  # --- Settings the till has to honour --------------------------------
+  # PK is account_id, aliased to id — same explicit-column rule as
+  # stock_levels above.
+  account_settings:
+    query: |
+      SELECT
+        account_settings.account_id as id,
+        account_settings.shifts_enabled,
+        account_settings.open_tickets_enabled,
+        account_settings.low_stock_alerts_enabled,
+        account_settings.negative_stock_alerts_enabled
+      FROM account_settings
+      WHERE account_settings.account_id = auth.user_id()
+
+  payment_types:
+    query: SELECT * FROM payment_types WHERE account_id = auth.user_id()

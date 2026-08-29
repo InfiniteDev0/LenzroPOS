@@ -4,7 +4,7 @@
 // ends up allocated, never more — that's what keeps Owed = Taken - Paid
 // correct without drifting.
 
-function round2(n) {
+export function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
