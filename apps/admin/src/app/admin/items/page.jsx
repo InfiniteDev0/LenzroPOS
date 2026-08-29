@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { MoreHorizontalIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
+import { ImageIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { createClient } from "@lenzro/supabase/client"
@@ -218,13 +218,28 @@ function ItemsPageContent() {
                       items.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium text-foreground">
-                            {item.name}
-                            {item.item_variants?.length > 0 && (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                ({item.item_variants.length} variant
-                                {item.item_variants.length > 1 ? "s" : ""})
+                            <div className="flex items-center gap-3">
+                              {/* Same photo the cashier sees on the till —
+                                  worth showing here so it's obvious which
+                                  items still have no image. */}
+                              <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                                {item.image_url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={item.image_url} alt="" className="size-full object-cover" />
+                                ) : (
+                                  <ImageIcon className="size-4 text-muted-foreground" />
+                                )}
+                              </div>
+                              <span className="min-w-0">
+                                {item.name}
+                                {item.item_variants?.length > 0 && (
+                                  <span className="ml-2 text-xs text-muted-foreground">
+                                    ({item.item_variants.length} variant
+                                    {item.item_variants.length > 1 ? "s" : ""})
+                                  </span>
+                                )}
                               </span>
-                            )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {item.categories?.name ?? "—"}

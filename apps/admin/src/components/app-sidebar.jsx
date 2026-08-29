@@ -15,13 +15,9 @@ import {
 } from "@/components/ui/sidebar"
 import { GalleryVerticalEndIcon, AudioLinesIcon, TerminalIcon, BarChart3Icon, PackageIcon, WarehouseIcon, UsersIcon, ContactIcon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon } from "lucide-react"
 
-// This is sample data.
+// Nav structure only — the signed-in user is loaded for real by NavUser
+// itself, which is why there's no `user` here any more.
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
   teams: [
     {
       name: "Acme Inc",
@@ -149,12 +145,13 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className="flex items-center bg-foreground dark:bg-background text-white
-         p-2 rounded-md gap-2">
-          <img src="/logo.png" className="size-10 rounded-xl" alt="" />
-          <p className="flex flex-col">
-            Lenzro POS
-            <span className="text-xs text-zinc-400">point of sale</span>
+        {/* When the sidebar collapses to icons the wordmark has to go with
+            it, or it wraps into a column of single words down the rail. */}
+        <div className="flex items-center gap-2 overflow-hidden rounded-md bg-foreground p-2 text-white group-data-[collapsible=icon]:p-1 dark:bg-background">
+          <img src="/logo.png" className="size-10 shrink-0 rounded-xl group-data-[collapsible=icon]:size-8" alt="" />
+          <p className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
+            <span className="truncate">Lenzro POS</span>
+            <span className="truncate text-xs text-zinc-400">point of sale</span>
           </p>
         </div>
       </SidebarHeader>
@@ -163,7 +160,7 @@ export function AppSidebar({
         {/* <NavProjects projects={data.projects} /> */}
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

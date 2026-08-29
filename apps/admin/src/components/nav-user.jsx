@@ -1,12 +1,12 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { createClient } from "@lenzro/supabase/client"
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
 } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -23,20 +23,84 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { ChevronsUpDownIcon, SparklesIcon, BadgeCheckIcon, CreditCardIcon, BellIcon, LogOutIcon } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { ChevronsUpDownIcon, BadgeCheckIcon, LogOutIcon } from "lucide-react"
 
-export function NavUser({
-  user
-}) {
+function initialsFor(name, email) {
+  const source = (name || email || "").trim()
+  if (!source) return "?";
+  const parts = source.split(/[\s@.]+/).filter(Boolean)
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
+// The real signed-in owner, not the shadcn placeholder this shipped with.
+// Name comes from `profiles.full_name` (set by the signup trigger); the
+// email only exists on the auth user, so both are needed.
+export function NavUser() {
   const { isMobile } = useSidebar()
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+
+    async function load() {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+      if (!active || !authUser) {
+        if (active) setLoading(false)
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", authUser.id)
+        .maybeSingle()
+
+      if (!active) return
+      setUser({
+        name: profile?.full_name?.trim() || authUser.email?.split("@")[0] || "Owner",
+        email: authUser.email ?? "",
+      })
+      setLoading(false)
+    }
+
+    load()
+    return () => {
+      active = false
+    };
+  }, [supabase])
 
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push("/auth")
     router.refresh()
   }
+
+  if (loading || !user) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <div className="flex items-center gap-2 p-2">
+            <Skeleton className="size-8 shrink-0 rounded-full" />
+            <div className="grid flex-1 gap-1.5 group-data-[collapsible=icon]:hidden">
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
+
+  const initials = initialsFor(user.name, user.email)
 
   return (
     <SidebarMenu>
@@ -47,8 +111,7 @@ export function NavUser({
               <SidebarMenuButton size="lg" className="bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer hover:text-white" />
             }>
             <Avatar>
-              <AvatarImage src={user.avatar} alt={user.name} />
-              <AvatarFallback>CN</AvatarFallback>
+              <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{user.name}</span>
@@ -65,8 +128,7 @@ export function NavUser({
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar>
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback>CN</AvatarFallback>
+                    <AvatarFallback>{initials}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{user.name}</span>
@@ -76,25 +138,13 @@ export function NavUser({
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
+            {/* Upgrade/Billing/Notifications removed — billing doesn't
+                exist (Phase 10) and notifications aren't built yet. A
+                menu item that does nothing is worse than no menu item. */}
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <SparklesIcon />
-                Upgrade to Pro
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/admin/employees")}>
                 <BadgeCheckIcon />
                 Account
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCardIcon />
-                Billing
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <BellIcon />
-                Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
