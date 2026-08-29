@@ -193,7 +193,95 @@ function ItemsPageContent() {
                 </Badge>
               )}
             </div>
-            <Card className="bg-background">
+            {/* Cards below `md`. Seven columns is hopeless on a phone,
+                and this is the one list where the photo matters — it's
+                what the cashier taps on the till, so seeing it here is
+                how you notice an item that still has none. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:hidden">
+              {items.length === 0 ? (
+                <p className="py-10 text-center text-muted-foreground">
+                  No items in this category yet
+                </p>
+              ) : (
+                items.map((item) => (
+                  <Card key={item.id} className="gap-0 py-0">
+                    <CardContent className="flex items-start gap-3 p-4">
+                      <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                        {item.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.image_url} alt="" className="size-full object-cover" />
+                        ) : (
+                          <ImageIcon className="size-5 text-muted-foreground" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-foreground">{item.name}</p>
+                        <p className="truncate text-sm text-muted-foreground">
+                          {item.categories?.name ?? "Uncategorized"}
+                          {item.sku ? ` · ${item.sku}` : ""}
+                        </p>
+                        <p className="mt-1 font-mono text-base font-semibold tabular-nums">
+                          {formatCurrency(item.price)}
+                          {item.cost != null && (
+                            <span className="ml-2 font-sans text-xs font-normal text-muted-foreground">
+                              cost {formatCurrency(item.cost)}
+                            </span>
+                          )}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <Badge
+                            className={
+                              item.available_for_sale
+                                ? "border-none bg-emerald-100 text-emerald-700"
+                                : "border-none bg-muted text-muted-foreground"
+                            }
+                          >
+                            {item.available_for_sale ? "For sale" : "Not for sale"}
+                          </Badge>
+                          {item.track_stock && (
+                            <Badge variant="outline" className="rounded-full">
+                              Tracked
+                            </Badge>
+                          )}
+                          {item.item_variants?.length > 0 && (
+                            <Badge variant="outline" className="rounded-full">
+                              {item.item_variants.length} variant
+                              {item.item_variants.length > 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="ghost" size="icon" className="size-10 shrink-0">
+                              <MoreHorizontalIcon className="size-4" />
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(item)}>
+                            <PencilIcon />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setDeleteTarget(item)}
+                          >
+                            <Trash2Icon />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+
+            <Card className="hidden bg-background md:block">
               <CardContent className="px-2 sm:p-6">
                 <Table>
                   <TableHeader>

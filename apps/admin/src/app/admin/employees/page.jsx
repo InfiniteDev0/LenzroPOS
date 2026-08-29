@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTable } from "@tanstack/react-table"
 import {
+  ChevronRightIcon,
   KeyRoundIcon,
   MoreHorizontalIcon,
   PencilIcon,
@@ -28,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -340,12 +341,55 @@ export default function Page() {
               onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
+        {/* The DataGrid is pinnable, resizable and horizontally scrolling
+            — all of which are desktop affordances. On a phone it becomes
+            a sideways-scrolling wall, so below `md` the same rows render
+            as cards that open the same edit dialog on tap. */}
+        <div className="flex flex-col gap-3 md:hidden">
+          {data.length === 0 ? (
+            <p className="py-10 text-center text-muted-foreground">No employees match</p>
+          ) : (
+            data.map((employee) => (
+              <Card key={employee.id} className="gap-0 py-0">
+                <CardContent className="p-0">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 p-4 text-left active:bg-muted"
+                    onClick={() => setEditingEmployee(employee)}
+                  >
+                    <Avatar>
+                      <AvatarFallback className={`text-white ${employee.color}`}>
+                        {employee.name.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium text-foreground">{employee.name}</p>
+                        {employee.status !== "active" && (
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                            Deactivated
+                          </span>
+                        )}
+                      </div>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {employee.email || employee.phone || "No contact details"}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">{employee.role}</p>
+                    </div>
+                    <ChevronRightIcon className="size-5 shrink-0 text-muted-foreground" />
+                  </button>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
         <DataGrid
           table={table}
           recordCount={data?.length || 0}
           onRowClick={(employee) => setEditingEmployee(employee)}
           tableLayout={{ columnsPinnable: true, columnsResizable: true, rowsPinnable: true }}>
-          <div className="w-full space-y-2.5">
+          <div className="hidden w-full space-y-2.5 md:block">
             <Card className="p-0 [&_tr[data-row-pinned]]:bg-emerald-50 [&_tr[data-row-pinned]]:hover:bg-emerald-100 dark:[&_tr[data-row-pinned]]:bg-emerald-950/30 dark:[&_tr[data-row-pinned]]:hover:bg-emerald-950/50">
               <DataGridContainer>
                 <DataGridScrollArea>

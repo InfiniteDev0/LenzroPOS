@@ -44,11 +44,21 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  render,
+  nativeButton,
   ...props
 }) {
+  // Base UI assumes it's rendering a real <button> and warns loudly when
+  // it isn't. A Button rendered as a link (`render={<Link href=... />}`)
+  // is a link, so detect that from the presence of an href rather than
+  // making every call site remember to pass nativeButton={false}.
+  const rendersLink = render?.props?.href !== undefined
+
   return (
     <ButtonPrimitive
       data-slot="button"
+      render={render}
+      nativeButton={nativeButton ?? !rendersLink}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props} />
   );

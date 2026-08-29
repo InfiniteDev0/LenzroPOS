@@ -133,7 +133,64 @@ export default function Page() {
                 Add category
               </Button>
             </div>
-            <Card className="bg-background">
+            {/* Cards below `md` — three columns is already tight on a
+                phone, and the row is a link, so it wants a real tap
+                target rather than a table cell. */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {categories.map((category) => (
+                <Card key={category.id} className="gap-0 py-0">
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      onClick={() => router.push(`/admin/items?category=${category.id}`)}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-foreground">
+                          {category.name}
+                        </span>
+                        <span className="mt-1 block">
+                          <Badge
+                            className={
+                              category.active
+                                ? "border-none bg-emerald-100 text-emerald-700"
+                                : "border-none bg-muted text-muted-foreground"
+                            }
+                          >
+                            {category.active ? "Active" : "Inactive"}
+                          </Badge>
+                        </span>
+                      </span>
+                      <ArrowRightIcon className="size-4 shrink-0 text-muted-foreground" />
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button variant="ghost" size="icon" className="size-10 shrink-0">
+                            <MoreHorizontalIcon className="size-4" />
+                          </Button>
+                        }
+                      />
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(category)}>
+                          <PencilIcon />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setDeleteTarget(category)}
+                        >
+                          <Trash2Icon />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <Card className="hidden bg-background md:block">
               <CardContent className="px-2 sm:p-6">
                 <Table>
                   <TableHeader>
