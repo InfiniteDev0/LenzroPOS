@@ -111,8 +111,8 @@ export default function Page() {
               There&apos;s nothing to download from an app store. On the laptop, tablet or terminal
               you&apos;ll sell from, open the link below in Chrome or Edge and install it from the
               address bar (&ldquo;Install app&rdquo;, or &ldquo;Add to Home Screen&rdquo; on a
-              tablet). Sign in once with this account, pick the device below, and from then on your
-              staff only ever use their PINs.
+              tablet). Sign in once with this account and it links itself to the till below — from
+              then on your staff only ever use their PINs.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Button
@@ -146,8 +146,9 @@ export default function Page() {
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Your account has one till. Tap it to rename it — or activate it on a new machine by
-              opening the POS app there and signing in.
+              Your account has one till, and this is where it&apos;s named — tap it to rename it.
+              It shows as activated once the POS app has been opened and signed into on the machine
+              you sell from.
             </p>
           )}
         </div>
