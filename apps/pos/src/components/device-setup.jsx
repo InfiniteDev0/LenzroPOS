@@ -93,11 +93,20 @@ export function DeviceSetup() {
           </div>
 
           {error ? (
-            <div className="space-y-1">
+            <div className="space-y-2">
               <h1 className="text-xl font-semibold">Couldn&apos;t set up this till</h1>
               <p className="text-base text-muted-foreground">
                 Check the connection and try again. Nothing has been lost.
               </p>
+              {/* The actual reason, not just a friendly summary. This
+                  screen is hit during setup, often by whoever is standing
+                  at the counter — "it says try again" is not something
+                  anyone can act on or report usefully. */}
+              {error.message && (
+                <p className="rounded-lg bg-muted p-3 text-left font-mono text-xs wrap-break-word text-muted-foreground">
+                  {error.message}
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-1">
