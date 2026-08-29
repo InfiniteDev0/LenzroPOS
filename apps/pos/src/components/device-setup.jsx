@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { usePowerSync, useStatus } from "@powersync/react"
 import { MonitorSmartphoneIcon, TriangleAlertIcon } from "lucide-react"
 
+import { createClient } from "@lenzro/supabase/client"
 import { setDeviceId } from "@/lib/pos-session"
 import { Button } from "@/components/ui/button"
 
@@ -23,44 +23,75 @@ import { Button } from "@/components/ui/button"
 const DEFAULT_DEVICE_NAME = "Front counter"
 
 export function DeviceSetup() {
-  const powersync = usePowerSync()
-  const status = useStatus()
   const [error, setError] = useState(null)
   const [attempt, setAttempt] = useState(0)
   const startedRef = useRef(false)
 
   useEffect(() => {
-    // Waiting for the initial sync is not optional: acting on an empty
-    // pos_devices table before it has arrived would create a second
-    // device, which the unique index then rejects on upload — leaving a
-    // write stuck retrying forever against a constraint it can't satisfy.
-    if (!status.hasSynced || startedRef.current) return;
+    if (startedRef.current) return;
     startedRef.current = true
 
     let active = true
 
+    // Deliberately talks to Supabase directly rather than going through
+    // PowerSync's local database and upload queue.
+    //
+    // Activation is inherently an online, one-time act — the owner has
+    // just signed in — so it gains nothing from being offline-capable,
+    // and routing it through the queue was actively harmful. The local
+    // table is only as good as what has synced down; when it hadn't, the
+    // till concluded there was no device and queued a second one, which
+    // the one-per-account index rejects with a 409 forever. Worse, the
+    // rejected row then gets reconciled away by the next sync, so the
+    // till decides there's no device again and queues another — an
+    // endless create/reject/erase loop.
+    //
+    // Asking the server is authoritative and settles it in one round trip.
     async function activate() {
-      const existing = await powersync.getOptional(
-        "SELECT * FROM pos_devices ORDER BY created_at LIMIT 1"
-      )
+      const supabase = createClient()
+
+      const { data: existing, error: selectError } = await supabase
+        .from("pos_devices")
+        .select("id, status")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (selectError) throw selectError;
 
       if (existing) {
         if (existing.status !== "activated") {
-          await powersync.execute(
-            "UPDATE pos_devices SET status = 'activated', activated_at = ? WHERE id = ?",
-            [new Date().toISOString(), existing.id]
-          )
+          const { error: updateError } = await supabase
+            .from("pos_devices")
+            .update({ status: "activated", activated_at: new Date().toISOString() })
+            .eq("id", existing.id)
+          if (updateError) throw updateError;
         }
         setDeviceId(existing.id)
         return
       }
 
-      const id = crypto.randomUUID()
-      await powersync.execute(
-        "INSERT INTO pos_devices (id, name, status, activated_at) VALUES (?, ?, 'activated', ?)",
-        [id, DEFAULT_DEVICE_NAME, new Date().toISOString()]
-      )
-      setDeviceId(id)
+      const { data: created, error: insertError } = await supabase
+        .from("pos_devices")
+        .insert({
+          name: DEFAULT_DEVICE_NAME,
+          status: "activated",
+          activated_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single()
+
+      // Another machine claimed the account's one device in between —
+      // fetch and use that one instead of failing.
+      if (insertError?.code === "23505") {
+        const { data: raced } = await supabase.from("pos_devices").select("id").limit(1).maybeSingle()
+        if (raced) {
+          setDeviceId(raced.id)
+          return
+        }
+      }
+      if (insertError) throw insertError;
+
+      setDeviceId(created.id)
     }
 
     activate().catch((err) => {
@@ -72,7 +103,7 @@ export function DeviceSetup() {
     return () => {
       active = false
     };
-  }, [status.hasSynced, powersync, attempt])
+  }, [attempt])
 
   return (
     <div className="flex h-svh items-center justify-center p-6">
@@ -112,9 +143,7 @@ export function DeviceSetup() {
             <div className="space-y-1">
               <h1 className="text-xl font-semibold">Setting up this till</h1>
               <p className="text-base text-muted-foreground">
-                {status.hasSynced
-                  ? "Linking this machine to your account…"
-                  : "Getting your menu and staff…"}
+                Linking this machine to your account…
               </p>
             </div>
           )}
