@@ -8,18 +8,26 @@
 #
 # Every table here must also exist in AppSchema.js, and vice versa.
 #
-# Two gotchas this config works around:
+# Three rules this config works around:
 #
-#   1. PowerSync requires every synced row to have an `id` column. Two
-#      tables don't have one in Postgres — `stock_levels` (PK is item_id)
-#      and `account_settings` (PK is account_id) — so both alias their PK
-#      to `id`.
-#   2. Once any column in a SELECT is aliased, `table.*` is rejected
-#      ("Invalid unqualified reference"). Those two streams therefore list
-#      every column explicitly. The rest can use the `*` form.
+#   1. A stream SELECTs from exactly ONE table. Joining to reach a parent
+#      is rejected with "Must SELECT from a single table". Tables with no
+#      account_id of their own are scoped with a subquery in the WHERE
+#      instead, which is the supported way to express "belongs to one of
+#      my rows" — and it nests, so a grandchild filters through its
+#      parent's own subquery.
+#   2. PowerSync requires every synced row to have an `id` column. Two
+#      tables don't have one in Postgres — stock_levels (PK is item_id)
+#      and account_settings (PK is account_id) — so both alias their PK
+#      to `id`, which then means listing every column explicitly rather
+#      than using `*`.
+#   3. `config.edition` at the bottom is required. Without it PowerSync
+#      falls back to the alpha syntax and rejects every stream here.
 #
-# Tables without their own `account_id` are scoped by joining to the table
-# that has one, so a device only ever syncs its own account's data.
+# Every subquery below partitions data by ownership (account_id), which
+# is both the point and, incidentally, what keeps this clear of
+# CVE-2026-30870 — that affected subqueries used only to decide whether a
+# table syncs at all, and was fixed in service-core 1.20.1.
 
 streams:
   # --- Menu -----------------------------------------------------------
@@ -31,31 +39,34 @@ streams:
 
   menu_item_variants:
     query: |
-      SELECT item_variants.*
-      FROM item_variants
-      INNER JOIN items ON items.id = item_variants.item_id
-      WHERE items.account_id = auth.user_id()
+      SELECT * FROM item_variants
+      WHERE item_id IN (
+        SELECT id FROM items WHERE account_id = auth.user_id()
+      )
 
+  # Two levels down from items, so the subquery nests.
   menu_item_variant_values:
     query: |
-      SELECT item_variant_values.*
-      FROM item_variant_values
-      INNER JOIN item_variants ON item_variants.id = item_variant_values.variant_id
-      INNER JOIN items ON items.id = item_variants.item_id
-      WHERE items.account_id = auth.user_id()
+      SELECT * FROM item_variant_values
+      WHERE variant_id IN (
+        SELECT id FROM item_variants WHERE item_id IN (
+          SELECT id FROM items WHERE account_id = auth.user_id()
+        )
+      )
 
-  # PK is item_id, so it's aliased to id — which then forces every other
-  # column to be listed explicitly (see gotcha 2 above).
+  # PK is item_id, aliased to id — which forces every other column to be
+  # listed explicitly (see rule 2 above).
   stock_levels:
     query: |
       SELECT
-        stock_levels.item_id as id,
-        stock_levels.item_id,
-        stock_levels.quantity,
-        stock_levels.low_stock_threshold
+        item_id as id,
+        item_id,
+        quantity,
+        low_stock_threshold
       FROM stock_levels
-      INNER JOIN items ON items.id = stock_levels.item_id
-      WHERE items.account_id = auth.user_id()
+      WHERE item_id IN (
+        SELECT id FROM items WHERE account_id = auth.user_id()
+      )
 
   # --- Sales ----------------------------------------------------------
   orders:
@@ -63,10 +74,10 @@ streams:
 
   order_items:
     query: |
-      SELECT order_items.*
-      FROM order_items
-      INNER JOIN orders ON orders.id = order_items.order_id
-      WHERE orders.account_id = auth.user_id()
+      SELECT * FROM order_items
+      WHERE order_id IN (
+        SELECT id FROM orders WHERE account_id = auth.user_id()
+      )
 
   discount_types:
     query: SELECT * FROM discount_types WHERE account_id = auth.user_id()
@@ -83,10 +94,10 @@ streams:
 
   shift_expenses:
     query: |
-      SELECT shift_expenses.*
-      FROM shift_expenses
-      INNER JOIN shifts ON shifts.id = shift_expenses.shift_id
-      WHERE shifts.account_id = auth.user_id()
+      SELECT * FROM shift_expenses
+      WHERE shift_id IN (
+        SELECT id FROM shifts WHERE account_id = auth.user_id()
+      )
 
   business_days:
     query: SELECT * FROM business_days WHERE account_id = auth.user_id()
@@ -100,11 +111,10 @@ streams:
 
   customer_payment_allocations:
     query: |
-      SELECT customer_payment_allocations.*
-      FROM customer_payment_allocations
-      INNER JOIN customer_payments
-        ON customer_payments.id = customer_payment_allocations.payment_id
-      WHERE customer_payments.account_id = auth.user_id()
+      SELECT * FROM customer_payment_allocations
+      WHERE payment_id IN (
+        SELECT id FROM customer_payments WHERE account_id = auth.user_id()
+      )
 
   # --- Settings the till has to honour --------------------------------
   # PK is account_id, aliased to id — same explicit-column rule as
@@ -112,26 +122,23 @@ streams:
   account_settings:
     query: |
       SELECT
-        account_settings.account_id as id,
-        account_settings.shifts_enabled,
-        account_settings.open_tickets_enabled,
-        account_settings.low_stock_alerts_enabled,
-        account_settings.negative_stock_alerts_enabled,
-        account_settings.receipt_header,
-        account_settings.receipt_footer,
-        account_settings.receipt_show_customer,
-        account_settings.receipt_logo_url
+        account_id as id,
+        shifts_enabled,
+        open_tickets_enabled,
+        low_stock_alerts_enabled,
+        negative_stock_alerts_enabled,
+        receipt_header,
+        receipt_footer,
+        receipt_show_customer,
+        receipt_logo_url
       FROM account_settings
-      WHERE account_settings.account_id = auth.user_id()
+      WHERE account_id = auth.user_id()
 
   payment_types:
     query: SELECT * FROM payment_types WHERE account_id = auth.user_id()
 
-# Required. Without it PowerSync falls back to the alpha Sync Streams
-# syntax and rejects every stream above with "Sync streams require
-# edition 2 or later". PowerSync's dashboard may suggest upgrading this
-# to edition 3 for newer features — that's a deliberate change to make on
-# its own, verifying the deploy still validates, not something to bump
-# casually while shipping other work.
+# Required, and must be 3: edition 2 is the alpha syntax and the
+# dashboard warns about it. Edition 3 is what supports the subquery
+# filtering every child stream above depends on.
 config:
-  edition: 2
+  edition: 3

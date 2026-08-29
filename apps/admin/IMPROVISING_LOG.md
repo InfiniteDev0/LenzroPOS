@@ -120,3 +120,23 @@ Now keyed on the type alone: supabase-js reports real API failures as `Postgrest
 `reset-sales-data.sql` originally kept `pos_devices`, on the theory that the device registration was worth preserving. Wrong for the actual use case it exists for: going live after testing means starting the books over on a clean device, not inheriting the test till's identity. It now deletes the device too (after shifts and business days, which point at it).
 
 That exposed the matching client bug: the POS trusted the device id in localStorage unconditionally, so with the row deleted it would sail past activation and then have every shift it opened rejected by the foreign key on upload. It now validates the stored id against the synced `pos_devices` table — same guard, and same "only once `status.hasSynced`" caveat, as the stale-shift check.
+
+### Sync Streams: one table per stream, and `config.edition: 3`
+Two rounds of dashboard rejections, both worth recording so the next change doesn't repeat them.
+
+**`config.edition` is mandatory.** Without it PowerSync assumes the alpha Sync Streams syntax and rejects *every* stream in the file — 18 identical "Sync streams require edition 2 or later" errors from one missing declaration, which reads like 18 broken streams rather than one missing line. It must be `3`: edition 2 still triggers the "using an alpha version" warning, and edition 3 is what supports the subquery filtering below.
+
+**A stream SELECTs from exactly one table.** The original file scoped child tables by joining up to whichever table has `account_id` (`SELECT order_items.* FROM order_items INNER JOIN orders ...`). Sync Streams rejects that outright with "Must SELECT from a single table" — selecting from one table *through* a join still counts as multiple tables. The supported form is a subquery in the WHERE, and it nests, which is how `item_variant_values` reaches `items` two levels up:
+
+```
+SELECT * FROM item_variant_values
+WHERE variant_id IN (
+  SELECT id FROM item_variants WHERE item_id IN (
+    SELECT id FROM items WHERE account_id = auth.user_id()
+  )
+)
+```
+
+Dropping the joins also removed the older "Invalid unqualified reference" trap: with a single table in play, columns no longer need qualifying, so `stock_levels` and `account_settings` alias their PK to `id` with plain column names.
+
+**On CVE-2026-30870** (`config.edition: 3` on service-core 1.20.0, fixed in 1.20.1): it affected subqueries used *only* to decide whether a table syncs at all, without partitioning the data. Every subquery here partitions by `account_id`, so this config isn't in that shape — but keep it that way, and don't write a stream whose subquery is a bare existence check.
