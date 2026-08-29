@@ -54,13 +54,22 @@ export class BackendConnector {
       // (or whatever caused the failure) recovers, instead of silently
       // dropping the order.
       //
-      // A plain "Failed to fetch" here just means we're offline — routine
-      // and expected, not worth alarming a cashier over. Next.js's dev
+      // A transport failure here just means we're offline — routine and
+      // expected, not worth alarming a cashier over. Next.js's dev
       // overlay surfaces every console.error as a prominent panel, so
       // only genuinely unexpected upload failures (a rejected write, a
       // validation error, etc.) get logged loudly; the offline case stays
       // silent and just retries next sync attempt.
-      const isNetworkFailure = error instanceof TypeError && /fetch/i.test(error.message);
+      //
+      // Matching on the message doesn't work: browsers word this
+      // differently ("Failed to fetch" in Chrome, "NetworkError when
+      // attempting to fetch resource" in Firefox, "Load failed" in
+      // Safari, plain "network error" elsewhere), and an earlier
+      // /fetch/i test let "network error" through and dev-overlaid it.
+      // supabase-js reports real API failures as PostgrestError, never a
+      // TypeError, so any TypeError reaching here is the transport
+      // giving up rather than the server rejecting the write.
+      const isNetworkFailure = error instanceof TypeError;
       if (!isNetworkFailure) {
         console.error("PowerSync upload failed, will retry", error);
       }

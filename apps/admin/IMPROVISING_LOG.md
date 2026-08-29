@@ -110,3 +110,13 @@ The Sales Report's employee breakdown reached an employee only through the shift
 Someone is always signed in at the till: the PIN screen is mandatory whether or not shifts are on. The employee was always known at the moment of sale, it just had nowhere to be recorded. Migration `0016` adds `orders.employee_id`, written by the POS from the staff session on every checkout, and backfills existing rows from the shift chain. Readers prefer `orders.employee_id` and fall back to the shift chain for older rows.
 
 The remaining fallback label is now "Unattributed" rather than "Unknown" — it only applies to orders that genuinely predate employee tracking, and it should say the data is missing rather than imply some mystery person rang them up.
+
+### "Console TypeError: network error" was my own offline check being too narrow
+`BackendConnector.uploadData` deliberately swallows transport failures — being offline is the normal case for a till, and Next's dev overlay turns every `console.error` into a full-screen panel. The check was `error instanceof TypeError && /fetch/i.test(error.message)`, which assumed the message always mentions "fetch". Browsers word it differently: Chrome says "Failed to fetch", Firefox "NetworkError when attempting to fetch resource", Safari "Load failed", and some environments just "network error" — that last one sailed past the regex and got reported as a crash.
+
+Now keyed on the type alone: supabase-js reports real API failures as `PostgrestError`, never a `TypeError`, so any `TypeError` reaching that handler is the transport giving up rather than the server rejecting the write. The queued transaction is still left uncompleted either way, so the order retries — the bug was only in what got logged, never in whether data survived.
+
+### A deleted POS device used to strand the till
+`reset-sales-data.sql` originally kept `pos_devices`, on the theory that the device registration was worth preserving. Wrong for the actual use case it exists for: going live after testing means starting the books over on a clean device, not inheriting the test till's identity. It now deletes the device too (after shifts and business days, which point at it).
+
+That exposed the matching client bug: the POS trusted the device id in localStorage unconditionally, so with the row deleted it would sail past activation and then have every shift it opened rejected by the foreign key on upload. It now validates the stored id against the synced `pos_devices` table — same guard, and same "only once `status.hasSynced`" caveat, as the stale-shift check.

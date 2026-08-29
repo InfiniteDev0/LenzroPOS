@@ -156,6 +156,16 @@ export default function Page() {
   const { paymentTypes } = usePaymentTypes()
   const shiftsEnabled = settings.shifts_enabled
 
+  // Same idea as the shift check below: the stored device id can point at
+  // a pos_devices row that's been deleted (starting the books over on a
+  // fresh device is the usual reason). Without this the till would sit on
+  // a dead id and every shift it opened would be rejected by the foreign
+  // key on upload.
+  const { data: deviceRows } = useQuery("SELECT id FROM pos_devices WHERE id = ?", [
+    deviceId ?? "",
+  ])
+  const deviceIsLive = Boolean(deviceId && (!status.hasSynced || deviceRows?.length > 0))
+
   // The stored shift can point at a row that no longer exists (the sales
   // data was reset, or the shift was closed from another install). Treat
   // a vanished or closed shift as no shift rather than trusting
@@ -432,7 +442,7 @@ export default function Page() {
     printTicket(previewOrder, previewItems, staffSession.employeeName, receipt)
   }
 
-  if (!deviceId) {
+  if (!deviceIsLive) {
     return <DeviceSetup />;
   }
 
