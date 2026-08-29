@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "powersync-web copy-assets -o public && next build",
     "start": "next start -p 3001",
     "lint": "eslint",
     "postinstall": "powersync-web copy-assets -o public"

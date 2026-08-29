@@ -140,3 +140,16 @@ WHERE variant_id IN (
 Dropping the joins also removed the older "Invalid unqualified reference" trap: with a single table in play, columns no longer need qualifying, so `stock_levels` and `account_settings` alias their PK to `id` with plain column names.
 
 **On CVE-2026-30870** (`config.edition: 3` on service-core 1.20.0, fixed in 1.20.1): it affected subqueries used *only* to decide whether a table syncs at all, without partitioning the data. Every subquery here partitions by `account_id`, so this config isn't in that shape — but keep it that way, and don't write a stream whose subquery is a bare existence check.
+
+### PowerSync workers were missing in production ("Failed to fetch a worker script")
+`apps/pos/public/@powersync/` holds PowerSync's SQLite worker and wasm bundles. It's gitignored — correctly, it's generated output — and was regenerated only by a `postinstall` script (`powersync-web copy-assets -o public`). That works locally, where install always runs, but nothing guarantees a workspace package's `postinstall` fires in a hosted build. On Vercel it didn't, so the deployed till served no worker: the app rendered, then died at "Loading your device…" with `Failed to fetch a worker script` and `[PowerSync]: Error in database or sync worker`.
+
+The copy is now part of `build` as well as `postinstall`:
+
+```
+"build": "powersync-web copy-assets -o public && next build"
+```
+
+Verified by deleting the directory outright and running a clean build — all 25 files come back before `next build` collects `public/`. `postinstall` stays so a fresh `pnpm install` still sets up dev.
+
+**This depends on the host running the package's `build` script rather than a bare `next build`.** If a deployment ever loses its workers again, check the platform's build command first — that's the thing that silently skips the copy step.
