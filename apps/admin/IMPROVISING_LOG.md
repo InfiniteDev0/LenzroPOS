@@ -153,3 +153,10 @@ The copy is now part of `build` as well as `postinstall`:
 Verified by deleting the directory outright and running a clean build — all 25 files come back before `next build` collects `public/`. `postinstall` stays so a fresh `pnpm install` still sets up dev.
 
 **This depends on the host running the package's `build` script rather than a bare `next build`.** If a deployment ever loses its workers again, check the platform's build command first — that's the thing that silently skips the copy step.
+
+### "Name this till" was a missing column, not a sync race
+Device activation ran `SELECT * FROM pos_devices ORDER BY created_at`, but `created_at` was never declared on `pos_devices` in `AppSchema.js`. Only the columns listed there exist in the local SQLite database, whatever Postgres holds, so the query failed with `no such column: created_at`.
+
+The damaging part is how it failed. `useQuery` surfaces an error as *no rows*, so activation concluded the account had no device and offered to create one — which is why the till kept asking for a name that had already been given in the back office, and why it looked like a sync-timing problem. Two separate fixes went past it before the error was ever surfaced on screen; printing `error.message` in the failure state is what finally named it in one step.
+
+Worth remembering as a class of bug: a PowerSync query against a column missing from `AppSchema` doesn't announce itself, it just returns nothing, and every caller then takes its empty-state branch. Grepping the app's queries against the schema found `pos_devices` was the only one affected — everything else orders by `name` or by a column that does exist.

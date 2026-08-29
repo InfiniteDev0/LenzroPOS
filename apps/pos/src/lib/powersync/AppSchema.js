@@ -153,6 +153,12 @@ const pos_devices = new Table({
   name: column.text,
   status: column.text,
   activated_at: column.text,
+  // Only the columns listed here exist in the local database, whatever
+  // Postgres has. This one was missing while device activation ordered by
+  // it, so that query failed with "no such column: created_at" — and
+  // because a failed useQuery just yields no rows, activation concluded
+  // the account had no device and offered to create one instead.
+  created_at: column.text,
 });
 
 const shifts = new Table(
