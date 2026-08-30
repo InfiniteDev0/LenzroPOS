@@ -166,19 +166,28 @@ export default function Page() {
   ])
   const deviceIsLive = Boolean(deviceId && (!status.hasSynced || deviceRows?.length > 0))
 
-  // The stored shift can point at a row that no longer exists (the sales
-  // data was reset, or the shift was closed from another install). Treat
-  // a vanished or closed shift as no shift rather than trusting
-  // localStorage — but only once we've actually synced, or a cold start
-  // would throw away a perfectly good shift before its row arrives.
+  // The open shift belongs to the till, not to this browser.
+  //
+  // It used to be read from localStorage, which meant a second browser on
+  // the same till — the owner opening the PWA on their phone while a
+  // cashier is mid-shift on the laptop — saw no shift and offered to open
+  // another one against the same drawer. Reading it from synced data
+  // instead means every device sharing the till adopts the shift that's
+  // already running, and a shift closed anywhere is closed everywhere.
+  //
+  // localStorage is still the fallback before the first sync completes,
+  // so a cold start offline doesn't throw away a perfectly good shift.
   const { data: openShiftRows } = useQuery(
-    "SELECT * FROM shifts WHERE id = ? AND status = 'open'",
-    [shiftSession?.shiftId ?? ""]
+    `SELECT * FROM shifts WHERE pos_device_id = ? AND status = 'open'
+     ORDER BY opened_at DESC LIMIT 1`,
+    [deviceId ?? ""]
   )
-  const shiftIsLive = Boolean(
-    shiftSession && (!status.hasSynced || openShiftRows?.length > 0)
-  )
-  const activeShift = shiftIsLive ? shiftSession : null
+  const syncedOpenShift = openShiftRows?.[0] ?? null
+  const activeShift = syncedOpenShift
+    ? { shiftId: syncedOpenShift.id, businessDayId: syncedOpenShift.business_day_id }
+    : !status.hasSynced && shiftSession
+      ? shiftSession
+      : null
 
   useEffect(() => {
     if (!deviceId) return;

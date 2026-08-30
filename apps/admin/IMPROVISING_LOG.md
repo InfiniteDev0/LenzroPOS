@@ -178,3 +178,14 @@ The whole "empty till" saga — no staff on the PIN screen, no menu, an empty `p
 Every stream now carries `auto_subscribe: true`, which is right for this app: one account, one till, offline-first, wanting all of its own data at all times. Selective subscription would only matter with far more data than a single restaurant generates.
 
 **If the till ever comes up empty again with no errors, check this first.** A missing `auto_subscribe` is silent by design, and nothing else in the stack will tell you.
+
+### The open shift belongs to the till, not to the browser
+Opening the PWA on a phone while a cashier was mid-shift on the laptop offered to start a *second* shift on the same till: pick who's working, count the opening float, go. Both browsers claim the same `pos_devices` row (one device per account), so this produced two open shifts against one physical drawer.
+
+Not cosmetic. Cash sales, expenses and the closing count would be split across two shifts covering the same drawer over the same period, so neither reconciles and the discrepancy on both is meaningless — the exact number the shift exists to produce.
+
+The cause was that the open shift lived only in that browser's `localStorage`, which by definition can't know what another device is doing. It's now read from synced data (`shifts WHERE pos_device_id = ? AND status = 'open'`), so every browser sharing the till adopts the shift already running, and a shift closed on one is closed on all. `localStorage` remains the fallback until the first sync completes, so a cold start offline doesn't discard a valid shift.
+
+Migration `0017` adds `shifts_one_open_per_device`, a unique partial index mirroring `business_days_one_open_per_device`, so even a race between two clients can only ever produce one open shift. It closes pre-existing duplicates first, keeping the most recent, or the index couldn't be created on an account that already hit this.
+
+Staff sessions stay per-browser, which is correct: the drawer is shared, but who is standing at each screen is not. Orders carry their own `employee_id`, so a cashier signing in on the phone still attributes their own sales while selling against the shared shift.
