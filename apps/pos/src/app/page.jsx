@@ -60,6 +60,7 @@ import { VariantPickerDialog } from "@/components/variant-picker-dialog"
 import { DeviceSetup } from "@/components/device-setup"
 import { StaffSignIn } from "@/components/staff-sign-in"
 import { ShiftStart } from "@/components/shift-start"
+import { ShiftInProgress } from "@/components/shift-in-progress"
 import { LockScreen } from "@/components/lock-screen"
 import { LogExpenseDialog } from "@/components/log-expense-dialog"
 import { ShiftCloseDialog } from "@/components/shift-close-dialog"
@@ -151,6 +152,9 @@ export default function Page() {
   const [endDayDialogOpen, setEndDayDialogOpen] = useState(false)
   const [openBusinessDay, setOpenBusinessDay] = useState(null)
   const [activeView, setActiveView] = useState("order")
+  // Lets someone carry on under a colleague's open shift once they have
+  // seen whose it is, without asking again on every render.
+  const [acknowledgedShiftId, setAcknowledgedShiftId] = useState(null)
 
   const { settings, receipt } = useAccountSettings()
   const { paymentTypes } = usePaymentTypes()
@@ -466,6 +470,24 @@ export default function Page() {
         employeeId={staffSession.employeeId}
         employeeName={staffSession.employeeName}
         onUnlock={() => setLocked(false)}
+      />
+    );
+  }
+
+  // Someone else's shift is already running on this till. Say so instead
+  // of offering to open a second one against the same drawer.
+  if (
+    shiftsEnabled &&
+    syncedOpenShift &&
+    syncedOpenShift.employee_id !== staffSession.employeeId &&
+    !acknowledgedShiftId
+  ) {
+    return (
+      <ShiftInProgress
+        shift={syncedOpenShift}
+        staff={staffSession}
+        onContinue={() => setAcknowledgedShiftId(syncedOpenShift.id)}
+        onSwitchUser={handleSignOutStaff}
       />
     );
   }

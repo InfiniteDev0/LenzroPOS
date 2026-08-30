@@ -12,12 +12,31 @@
 import { round2 } from "@/lib/tab-allocation"
 
 // Returns the id of the open day for this device, opening one if needed.
-export async function ensureBusinessDayOpen(powersync, deviceId, employeeId) {
-  const existing = await powersync.getOptional(
+//
+// `supabase` is optional and only used when we're online. The local table
+// is only as good as what has synced down, and acting on a stale empty
+// result opens a second day that `business_days_one_open_per_device`
+// rejects — after which the rejected row is reconciled away and anything
+// referencing it (the shift being opened) is orphaned and vanishes too.
+// Asking the server settles it when we can; offline, the local answer is
+// the best available and the index is the backstop.
+export async function ensureBusinessDayOpen(powersync, deviceId, employeeId, supabase = null) {
+  const localExisting = await powersync.getOptional(
     "SELECT id FROM business_days WHERE pos_device_id = ? AND status = 'open' LIMIT 1",
     [deviceId]
   )
-  if (existing?.id) return existing.id;
+  if (localExisting?.id) return localExisting.id;
+
+  if (supabase) {
+    const { data: remoteExisting, error } = await supabase
+      .from("business_days")
+      .select("id")
+      .eq("pos_device_id", deviceId)
+      .eq("status", "open")
+      .maybeSingle()
+    if (error) throw error;
+    if (remoteExisting?.id) return remoteExisting.id;
+  }
 
   const id = crypto.randomUUID()
   await powersync.execute(

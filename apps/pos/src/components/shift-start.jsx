@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { usePowerSync, useQuery } from "@powersync/react"
+import { usePowerSync, useQuery, useStatus } from "@powersync/react"
 import { ArrowLeftIcon, MoonIcon, SunriseIcon } from "lucide-react"
 
+import { createClient } from "@lenzro/supabase/client"
 import { formatCurrency } from "@/lib/currency"
 import { notifyError } from "@/lib/errors"
 import { setShiftSession } from "@/lib/pos-session"
@@ -21,6 +22,7 @@ import { EndDayDialog } from "@/components/end-day-dialog"
 // is two screens for a single intention.
 export function ShiftStart({ deviceId, staff, onBack }) {
   const powersync = usePowerSync()
+  const status = useStatus()
   const [typedFloat, setTypedFloat] = useState(null)
   const [busy, setBusy] = useState(false)
   const [openDay, setOpenDay] = useState(null)
@@ -59,7 +61,37 @@ export function ShiftStart({ deviceId, staff, onBack }) {
   async function confirmStart() {
     setBusy(true)
     try {
-      const businessDayId = await ensureBusinessDayOpen(powersync, deviceId, staff.employeeId)
+      // Online, the server decides whether this till already has a shift
+      // open. The local table can be stale, and opening a second shift is
+      // rejected by shifts_one_open_per_device — which doesn't fail
+      // visibly, it just gets discarded and reconciled away, dropping the
+      // cashier back here a second after they thought they'd started.
+      const supabase = status.connected ? createClient() : null
+
+      if (supabase) {
+        const { data: alreadyOpen, error } = await supabase
+          .from("shifts")
+          .select("id, business_day_id")
+          .eq("pos_device_id", deviceId)
+          .eq("status", "open")
+          .maybeSingle()
+        if (error) throw error;
+
+        if (alreadyOpen) {
+          setShiftSession({
+            shiftId: alreadyOpen.id,
+            businessDayId: alreadyOpen.business_day_id,
+          })
+          return
+        }
+      }
+
+      const businessDayId = await ensureBusinessDayOpen(
+        powersync,
+        deviceId,
+        staff.employeeId,
+        supabase
+      )
       const shiftId = crypto.randomUUID()
       await powersync.execute(
         `INSERT INTO shifts
