@@ -62,6 +62,10 @@ const data = {
           url: "/admin/expenses",
         },
         {
+          title: "Shifts",
+          url: "/admin/shifts",
+        },
+        {
           title: "End of day",
           url: "/admin/end-of-day",
         },
